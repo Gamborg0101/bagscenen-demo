@@ -24,8 +24,8 @@
     "next": "15.5.26",
     "next-auth": "^5.0.0-beta.32",
     "qrcode": "^1.5.4",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "server-only": "^0.0.1",
     "zod": "^4.6.5"
   },
