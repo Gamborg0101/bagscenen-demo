@@ -102,6 +102,9 @@ enum LightingPreset {
 
 model Event {
   id                String      @id @default(cuid())
+  // Human-readable id "2026-012": year of the event date at creation + running number per year. Never changes.
+  refYear           Int
+  refNumber         Int
   title             String
   startsAt          DateTime
   endsAt            DateTime?
@@ -166,6 +169,7 @@ model Event {
   request      EventRequest?
   channelPlans ChannelPlan[]
 
+  @@unique([refYear, refNumber])
   @@index([startsAt])
 }
 
@@ -304,6 +308,7 @@ model ChannelPlan {
   shareEnabled   Boolean    @default(false)
   shareVersion   Int        @default(0)
   shareExpiresAt DateTime? // links stop working after this (8 hours after creation)
+  shareHash      String? // content hash when the link was made; the public page says "changed" if it differs
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   channels       Channel[]

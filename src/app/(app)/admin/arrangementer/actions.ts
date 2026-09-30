@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { eventFormSchema, formToDb } from "@/lib/events/form";
 import { requireUser } from "@/lib/session";
+import { withEventRef } from "@/lib/events/ref";
 
 export type SaveEventResult = { id?: string; error?: string; issues?: { path: string; message: string }[] };
 
@@ -27,15 +28,18 @@ export async function saveEvent(eventId: string | null, input: unknown, requestI
 
   let id = eventId;
   if (id === null) {
-    const created = await db.event.create({
-      data: {
-        ...event,
-        createdBy: { connect: { id: actor.id } },
-        contacts: { create: contacts },
-        shifts: { create: shifts.map(({ id: _, ...s }) => s) }, // eslint-disable-line @typescript-eslint/no-unused-vars
-      },
-      select: { id: true },
-    });
+    const created = await withEventRef(db, event.startsAt, (ref) =>
+      db.event.create({
+        data: {
+          ...event,
+          ...ref,
+          createdBy: { connect: { id: actor.id } },
+          contacts: { create: contacts },
+          shifts: { create: shifts.map(({ id: _, ...s }) => s) }, // eslint-disable-line @typescript-eslint/no-unused-vars
+        },
+        select: { id: true },
+      }),
+    );
     id = created.id;
     await audit(actor.id, "event.create", "Event", id);
 
@@ -84,29 +88,32 @@ export async function deleteDraft(formData: FormData) {
   redirect("/admin/arrangementer");
 }
 
-// ---------- Invitations ----------
+// ---------- Helpers on an event ----------
 
-export async function inviteHelpers(eventId: string, userIds: string[]): Promise<{ error?: string; count?: number }> {
+/**
+ * Puts a named helper on the event without shifts yet; the coordinator then picks their shifts
+ * with "Ret vagter". Helpers normally take shifts themselves.
+ */
+export async function addHelper(formData: FormData) {
   const actor = await requireUser("LEAD");
-  z.cuid().parse(eventId);
-  const ids = z.array(z.cuid()).max(200).parse(userIds);
+  const eventId = z.cuid().parse(formData.get("eventId"));
+  const userId = z.cuid().parse(formData.get("userId"));
 
   const event = await db.event.findUnique({ where: { id: eventId }, select: { status: true } });
-  if (!event) return { error: "Arrangementet findes ikke." };
-  if (event.status !== "PUBLISHED") return { error: "Sæt arrangementet til “Klar”, før du inviterer." };
+  if (event?.status !== "PUBLISHED") return;
+  const user = await db.user.findFirst({ where: { id: userId, status: "ACTIVE", anonymizedAt: null }, select: { id: true } });
+  if (!user) return;
 
-  // Only active, non-anonymised users can be invited.
-  const users = await db.user.findMany({
-    where: { id: { in: ids }, status: "ACTIVE", anonymizedAt: null },
-    select: { id: true },
-  });
-  const { count } = await db.invitation.createMany({
-    data: users.map((u) => ({ eventId, userId: u.id })),
-    skipDuplicates: true,
+  // Someone who said "Kan ikke" can still be put on (e.g. after a phone call); people already on stay as they are.
+  const existing = await db.invitation.findUnique({ where: { eventId_userId: { eventId, userId } }, select: { status: true } });
+  if (existing && existing.status !== "DECLINED") return;
+  await db.invitation.upsert({
+    where: { eventId_userId: { eventId, userId } },
+    create: { eventId, userId },
+    update: { status: "PENDING", respondedAt: null },
   });
   await audit(actor.id, "invitation.create", "Event", eventId);
   revalidatePath(`/admin/arrangementer/${eventId}`);
-  return { count };
 }
 
 export async function removeInvitation(formData: FormData) {

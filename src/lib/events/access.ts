@@ -5,10 +5,7 @@ import type { Window } from "@/lib/coverage";
 import { hasRole, type CurrentUser } from "@/lib/session";
 import { isEventLocked } from "./response";
 
-/**
- * Helpers may see an event once they are invited (whatever their answer),
- * as long as it is not a draft. Leads and admins may see everything.
- */
+/** The viewer's own answer row for an event (if they have answered or been put on it). */
 export async function viewerInvitation(user: CurrentUser, eventId: string) {
   const invitation = await db.invitation.findUnique({
     where: { eventId_userId: { eventId, userId: user.id } },
@@ -17,11 +14,19 @@ export async function viewerInvitation(user: CurrentUser, eventId: string) {
   return invitation;
 }
 
-export async function canViewEvent(user: CurrentUser, eventId: string, status: string): Promise<boolean> {
+type ViewableEvent = { id: string; status: string; startsAt: Date; endsAt: Date | null };
+
+/**
+ * Open shifts: every helper sees every published event that isn't over, so they can take shifts.
+ * Past and cancelled events stay visible only to helpers who answered them; drafts never.
+ * Leads and admins see everything.
+ */
+export async function canViewEvent(user: CurrentUser, event: ViewableEvent): Promise<boolean> {
   if (hasRole(user.role, "LEAD")) return true;
-  if (status === "DRAFT") return false;
+  if (event.status === "DRAFT") return false;
+  if (event.status === "PUBLISHED" && !isEventLocked(event)) return true;
   const inv = await db.invitation.findUnique({
-    where: { eventId_userId: { eventId, userId: user.id } },
+    where: { eventId_userId: { eventId: event.id, userId: user.id } },
     select: { id: true },
   });
   return !!inv;

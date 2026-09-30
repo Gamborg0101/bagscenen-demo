@@ -22,7 +22,7 @@ async function load(params: Params["params"]) {
     where: { id: planId },
     select: { id: true, eventId: true, event: { select: { id: true, status: true, startsAt: true, endsAt: true } } },
   });
-  if (!plan || plan.eventId !== id || !(await canViewEvent(user, id, plan.event.status))) return null;
+  if (!plan || plan.eventId !== id || !(await canViewEvent(user, plan.event))) return null;
   return { user, plan };
 }
 

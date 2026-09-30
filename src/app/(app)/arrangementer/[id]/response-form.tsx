@@ -200,11 +200,11 @@ export function ResponseForm(p: Props) {
       ) : (
         <div className="flex flex-wrap gap-2">
           <button type="button" className={buttonClass("primary")} disabled={pending} onClick={() => setEditing(true)}>
-            {p.status === "DECLINED" ? "Ja, jeg kan alligevel" : "Ja, jeg kan"}
+            {p.status === "DECLINED" ? "Tag vagter alligevel" : "Tag vagter"}
           </button>
           {p.status === "PENDING" && (
             <button type="button" className={buttonClass("secondary")} disabled={pending} onClick={() => send("DECLINED")}>
-              Nej, jeg kan ikke
+              Kan ikke deltage
             </button>
           )}
         </div>
@@ -226,6 +226,6 @@ function StatusLine({ status, summary }: { status: InvitationStatus; summary: st
       </div>
     );
   }
-  if (status === "DECLINED") return <p className="text-muted">Du har meldt fra. Du kan stadig se arrangementet.</p>;
+  if (status === "DECLINED") return <p className="text-muted">Du har sagt, at du ikke kan deltage. Koordinatoren kan se det.</p>;
   return <p className="text-muted">Du har ikke svaret.</p>;
 }

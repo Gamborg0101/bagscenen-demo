@@ -10,6 +10,7 @@ const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString(
 // Date fields show dd/mm/åååå.
 const dk = (iso: string) => iso.split("-").reverse().join("/");
 let eventId = "";
+let declineEventId = "";
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
@@ -76,7 +77,7 @@ test("signup only accepts the allowed mail domains and waits for approval", asyn
   await expect(page).toHaveURL(/\/afventer$/);
 });
 
-test("admin approves, creates an event with standard shifts and invites", async ({ browser }) => {
+test("admin approves and creates events that helpers can see", async ({ browser }) => {
   const { context, page } = await asUser(browser, ADMIN.email, ADMIN.password);
 
   await page.goto("/admin/brugere");
@@ -96,20 +97,36 @@ test("admin approves, creates an event with standard shifts and invites", async 
   await page.click("button[type=submit]");
   await page.waitForURL(/\/admin\/arrangementer\/c[a-z0-9]+$/);
   eventId = page.url().split("/").pop()!;
+  // Every event gets a readable id: year + running number.
+  await expect(page.getByText(/^\d{4}-\d{3} ·/)).toBeVisible();
+  // No inviting: the helper shows up under "Har ikke svaret" until they answer.
+  await expect(page.getByText(`Har ikke svaret: ${HELPER.firstName} ${HELPER.lastName}`)).toBeVisible();
 
-  await page.click("button:text-is('Invitér medhjælpere')");
-  await page.locator("label", { hasText: `${HELPER.firstName} ${HELPER.lastName}` }).locator("input").check();
-  await page.click("button:has-text('Invitér 1')");
-  await expect(page.getByText("1 inviteret")).toBeVisible();
+  // A second event the helper will say they can't attend.
+  await page.goto("/admin/arrangementer/ny");
+  await page.fill("#title", "E2E-kan-ikke");
+  await page.fill("#date", dk(inDays(12)));
+  await page.fill("#start", "10:00");
+  await page.fill("#end", "12:00");
+  await page.click("button:text-is('Standardvagter')");
+  await page.click("button[type=submit]");
+  await page.waitForURL(/\/admin\/arrangementer\/c[a-z0-9]+$/);
+  declineEventId = page.url().split("/").pop()!;
   await context.close();
 });
 
 test("helper accepts with split time windows and admin sees the gap", async ({ browser }) => {
   const helper = await asUser(browser, HELPER.email, HELPER.password);
   const page = helper.page;
-  await expect(page.getByText("Nye invitationer")).toBeVisible();
-  await page.click("text=Svar →");
-  await page.click("button:text-is('Ja, jeg kan')");
+  // Open shifts: the helper sees the events without being invited.
+  await expect(page.getByText("Ledige vagter (2)")).toBeVisible();
+  await page.click("text=E2E-kan-ikke");
+  await page.click("button:text-is('Kan ikke deltage')");
+  await expect(page.getByText("Du har sagt, at du ikke kan deltage.")).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByText("Ledige vagter (1)")).toBeVisible();
+  await page.click("text=E2E-arrangement");
+  await page.click("button:text-is('Tag vagter')");
   // Set-up is a duration shift: the helper picks their own start time.
   await page.locator("label", { hasText: "Opsætning" }).locator("input[type=checkbox]").check();
   await page.fill("input[aria-label='Starttid for Opsætning']", "12:30");
@@ -126,7 +143,7 @@ test("helper accepts with split time windows and admin sees the gap", async ({ b
   await expect(page.getByText("Opsætning 12.30–14.30")).toBeVisible();
   await expect(page.getByRole("figure", { name: /Tidslinje/ })).toBeVisible();
 
-  // Helpers cannot reach admin pages or events they are not invited to.
+  // Helpers cannot reach admin pages or events that don't exist (or aren't open to them).
   await page.goto("/admin/brugere");
   await expect(page).toHaveURL(/\/$/);
   const res = await page.goto("/arrangementer/cabc123def456ghi789jkl0mn");
@@ -137,6 +154,9 @@ test("helper accepts with split time windows and admin sees the gap", async ({ b
   await admin.page.goto(`/admin/arrangementer/${eventId}`);
   // The gap shows as the red "Mangler" row in the timeline.
   await expect(admin.page.getByRole("figure", { name: /Tidslinje/ }).getByText(/^Mangler \(\d+\)$/)).toBeVisible();
+  // The coordinator sees who can't come.
+  await admin.page.goto(`/admin/arrangementer/${declineEventId}`);
+  await expect(admin.page.getByText(`Kan ikke: ${HELPER.firstName} ${HELPER.lastName}`)).toBeVisible();
   await admin.context.close();
 });
 
@@ -195,6 +215,19 @@ test("helper on the event builds a channel plan and shares it by QR link", async
   expect(await pub.content()).not.toContain("E2E rider.pdf");
   expect((await anon.request.get(riderUrl)).status()).toBe(404);
 
+  // Editing the plan while the QR code is live: the public page says the plan has changed.
+  await page.click("text=Redigér");
+  await page.waitForURL(/\/rediger$/);
+  await page.fill("input[aria-label='Kilde kanal 1']", "Kick inside");
+  await page.getByRole("button", { name: "Gem", exact: true }).first().click();
+  await expect(page.getByText("Gemt", { exact: true })).toBeVisible();
+  await pub.reload();
+  await expect(pub.getByRole("heading", { name: "Kanalplanen er ændret" })).toBeVisible();
+  await expect(pub.locator("td", { hasText: "Kick" })).toHaveCount(0);
+  await page.click("text=Vis / print");
+  await page.waitForURL(/\/kanalplan\/c[a-z0-9]+$/);
+  await expect(page.getByText("Kanalplanen er ændret, siden QR-koden blev lavet.")).toBeVisible();
+
   // Switching sharing off makes the old link stop working.
   await page.click("button:text-is('Slå deling fra')");
   await expect(page.getByRole("button", { name: "Lav QR-kode og link" })).toBeVisible();
@@ -245,7 +278,7 @@ test("booking link works once and becomes an event", async ({ browser }) => {
   await admin.page.click("button:text-is('Opret')");
   await admin.page.waitForURL(/\/rediger$/);
   await expect(admin.page.locator("#plan-name")).toHaveValue("E2E Band");
-  await expect(admin.page.locator("input[aria-label='Kilde kanal 1']")).toHaveValue("Kick in");
+  await expect(admin.page.locator("input[aria-label='Kilde kanal 1']")).toHaveValue("Kick inside");
   await admin.context.close();
 });
 
@@ -258,7 +291,9 @@ test("helper can export data and add to calendar; only the coordinator can cance
 
   const ics = await page.request.get(`/arrangementer/${eventId}/kalender`);
   expect(ics.headers()["content-type"]).toContain("text/calendar");
-  expect(await ics.text()).toContain("BEGIN:VEVENT");
+  const icsText = await ics.text();
+  expect(icsText).toContain("BEGIN:VEVENT");
+  expect(icsText).toMatch(/DESCRIPTION:\d{4}-\d{3} ·/);
 
   // Once on, a helper can't change or cancel on their own — only the coordinator can.
   await page.goto(`/arrangementer/${eventId}`);
@@ -269,13 +304,13 @@ test("helper can export data and add to calendar; only the coordinator can cance
   const admin = await asUser(browser, ADMIN.email, ADMIN.password);
   await admin.page.goto(`/admin/arrangementer/${eventId}`);
   await admin.page.getByRole("button", { name: "Meld fra" }).click();
-  await expect(admin.page.getByText("Kan ikke")).toBeVisible();
+  await expect(admin.page.getByText(`Kan ikke: ${HELPER.firstName} ${HELPER.lastName}`)).toBeVisible();
   await admin.context.close();
 
   await page.reload();
-  await expect(page.getByText("Du har meldt fra")).toBeVisible();
+  await expect(page.getByText("Du har sagt, at du ikke kan deltage.")).toBeVisible();
   await page.goto("/");
-  await expect(page.getByText("Meldt fra (1)")).toBeVisible();
+  await expect(page.getByText("Kan ikke (2)")).toBeVisible();
   await context.close();
 });
 

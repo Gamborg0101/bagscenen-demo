@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { hash } from "@node-rs/argon2";
 import { PrismaClient } from "@prisma/client";
 import { zonedToUtc } from "../src/lib/datetime";
+import { eventRefYear } from "../src/lib/events/ref";
 import { ADMIN, E2E_DATABASE_URL, MAIL_DOMAIN } from "./env";
 
 // Visual review on a phone: only runs with SCREENSHOTS=<dir>.
@@ -29,6 +30,9 @@ test.beforeAll(async () => {
   const h = (n: number) => new Date(start.getTime() + n * 3600_000);
   const event = await db.event.create({
     data: {
+      // High number so it never clashes with events the smoke test creates through the app.
+      refYear: eventRefYear(start),
+      refNumber: 900,
       title: "Skærmtest: Koncert i salen",
       startsAt: start,
       endsAt: end,
@@ -145,7 +149,7 @@ test("helper pages", async ({ page }) => {
   await page.goto(`/arrangementer/${eventId}`);
   await expect(page.getByText("HUSK SIDERÆLING")).toBeVisible();
   await shot(page, "11-helper-event");
-  await page.click("button:text-is('Ja, jeg kan')");
+  await page.click("button:text-is('Tag vagter')");
   await page.locator("label", { hasText: "Opsætning" }).locator("input[type=checkbox]").check();
   await page.click("text=Kan du ikke tage en hel vagt?");
   await page.click("text=+ Eget tidsrum");

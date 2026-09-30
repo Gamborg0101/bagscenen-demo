@@ -22,13 +22,14 @@ export default async function HelperEventPage({ params }: { params: Promise<{ id
 
   const event = await getEventWithRelations(id);
   // Same response whether the event is missing or not visible, so ids can't be probed.
-  if (!event || !(await canViewEvent(user, id, event.status))) notFound();
+  if (!event || !(await canViewEvent(user, event))) notFound();
 
   const [invitations, notes, plans] = await Promise.all([eventInvitations(id), eventNotes(id), eventPlans(id)]);
-  const mine = invitations.find((i) => i.userId === user.id);
-  // Leads without an invitation use the admin view.
-  if (!mine && hasRole(user.role, "LEAD")) redirect(`/admin/arrangementer/${id}`);
-  if (!mine) notFound();
+  const row = invitations.find((i) => i.userId === user.id);
+  // Leads who aren't on the event themselves use the admin view.
+  if (!row && hasRole(user.role, "LEAD")) redirect(`/admin/arrangementer/${id}`);
+  // Helpers who haven't answered yet see the event as open.
+  const mine = row ?? { status: "PENDING" as const, availabilities: [] };
 
   const eventDay = toDateInput(event.startsAt);
   const canEditPlanList = mine.status === "ACCEPTED" && !isEventLocked(event);
@@ -40,7 +41,7 @@ export default async function HelperEventPage({ params }: { params: Promise<{ id
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="text-xs text-muted hover:text-fg">
-          ← Mine vagter
+          ← Forsiden
         </Link>
         <a href={`/arrangementer/${event.id}/kalender`} download className="text-xs text-muted underline underline-offset-2 hover:text-fg">
           Tilføj til kalender

@@ -18,11 +18,11 @@ import { isEventLocked } from "@/lib/events/response";
 import { ResponseForm } from "@/app/(app)/arrangementer/[id]/response-form";
 import { requireUser } from "@/lib/session";
 import { deleteDraft, removeInvitation } from "../actions";
-import { InvitePicker } from "./invite-controls";
+import { AddHelper } from "./add-helper";
 
 const STATUS: Record<InvitationStatus, { label: string; className: string }> = {
   ACCEPTED: { label: "Er på", className: "text-ok" },
-  PENDING: { label: "Afventer svar", className: "text-muted" },
+  PENDING: { label: "Sat på · vælg vagter", className: "text-warn" },
   DECLINED: { label: "Kan ikke", className: "text-danger" },
 };
 
@@ -39,7 +39,7 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
     db.user.findMany({
       where: { status: "ACTIVE", anonymizedAt: null },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, role: true },
     }),
     eventPlans(id),
   ]);
@@ -49,8 +49,13 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
   const coverage = eventCoverage(event.shifts, invitations);
   const options = shiftOptions(event.shifts, eventDay);
   const multiDay = new Set([eventDay, ...event.shifts.map((s) => toDateInput(s.startsAt))]).size > 1;
-  const invitedIds = new Set(invitations.map((i) => i.userId));
-  const candidates = activeUsers.filter((u) => !invitedIds.has(u.id)).map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` }));
+  const answeredIds = new Set(invitations.map((i) => i.userId));
+  const onIds = new Set(invitations.filter((i) => i.status !== "DECLINED").map((i) => i.userId));
+  const candidates = activeUsers.filter((u) => !onIds.has(u.id)).map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` }));
+  // So the coordinator knows when to step in: who said no, and which helpers haven't answered at all.
+  const declined = invitations.filter((i) => i.status === "DECLINED").map((i) => displayName(i.user));
+  const notAnswered = activeUsers.filter((u) => u.role === "HELPER" && !answeredIds.has(u.id)).map((u) => `${u.firstName} ${u.lastName}`);
+  const onEvent = invitations.filter((i) => i.status !== "DECLINED");
 
   return (
     <div className="space-y-6">
@@ -73,9 +78,9 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
                 <CoverageTimeline shifts={event.shifts} coverage={coverage} helpers={timelineHelpers(invitations, event.shifts)} />
               )}
 
-              {invitations.length > 0 && (
+              {onEvent.length > 0 && (
                 <ul className="divide-y divide-line border-y border-line">
-                  {invitations.map((i) => (
+                  {onEvent.map((i) => (
                     <li key={i.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">
@@ -117,11 +122,26 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
                 </ul>
               )}
 
+              {event.status === "PUBLISHED" && (
+                <div className="space-y-1 text-sm">
+                  <p>
+                    <span className="text-muted">Kan ikke: </span>
+                    {declined.length > 0 ? declined.join(", ") : "ingen"}
+                  </p>
+                  <p>
+                    <span className="text-muted">Har ikke svaret: </span>
+                    {notAnswered.length > 0 ? notAnswered.join(", ") : "ingen"}
+                  </p>
+                </div>
+              )}
+
               {event.status === "PUBLISHED" ? (
-                <InvitePicker eventId={event.id} candidates={candidates} />
+                <AddHelper eventId={event.id} candidates={candidates} />
               ) : (
                 <p className="text-xs text-muted">
-                  {event.status === "DRAFT" ? "Sæt arrangementet til “Klar” for at invitere medhjælpere." : "Arrangementet er aflyst."}
+                  {event.status === "DRAFT"
+                    ? "Sæt arrangementet til “Klar”, så medhjælperne kan se det og tage vagter."
+                    : "Arrangementet er aflyst."}
                 </p>
               )}
             </div>

@@ -14,7 +14,7 @@ export default async function EditPlanPage({ params }: { params: Promise<{ id: s
   const { id, planId } = await params;
   if (!z.cuid().safeParse(planId).success) notFound();
   const plan = await getPlan(planId);
-  if (!plan || plan.eventId !== id || !(await canViewEvent(user, id, plan.event.status))) notFound();
+  if (!plan || plan.eventId !== id || !(await canViewEvent(user, plan.event))) notFound();
   if (!(await canEditPlans(user, plan.event))) redirect(`/arrangementer/${id}/kanalplan/${planId}`);
 
   const rows: ChannelRow[] = plan.channels.map((c) => ({

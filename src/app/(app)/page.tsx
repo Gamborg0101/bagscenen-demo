@@ -4,6 +4,7 @@ import { formatRange, formatShortDay, toDateInput } from "@/lib/datetime";
 import { db } from "@/lib/db";
 import { describeAvailability } from "@/lib/events/format";
 import { staffingSummary } from "@/lib/events/view";
+import { formatEventRef } from "@/lib/events/ref";
 import { isEventLocked } from "@/lib/events/response";
 import { hasRole, requireUser } from "@/lib/session";
 
@@ -18,7 +19,6 @@ export default async function DashboardPage() {
 
   const upcoming = invitations.filter((i) => !isEventLocked(i.event));
   const past = invitations.filter((i) => isEventLocked(i.event)).reverse().slice(0, 20);
-  const pending = upcoming.filter((i) => i.status === "PENDING");
   const accepted = upcoming.filter((i) => i.status === "ACCEPTED");
   const declined = upcoming.filter((i) => i.status === "DECLINED");
 
@@ -39,11 +39,60 @@ export default async function DashboardPage() {
 
       {isLead && <CoordinatorOverview />}
 
-      {pending.length > 0 && <List title="Nye invitationer" items={pending} highlight />}
+      {!isLead && <OpenEvents userId={user.id} />}
       {(!isLead || hasOwn) && <List title="Mine vagter" items={accepted} empty="Du er ikke på nogen kommende arrangementer." />}
-      {declined.length > 0 && <List title="Meldt fra" items={declined} />}
+      {declined.length > 0 && <List title="Kan ikke" items={declined} />}
       {past.length > 0 && <List title="Tidligere" items={past} muted />}
     </div>
+  );
+}
+
+/** Upcoming events the helper hasn't answered yet: they can take shifts or say they can't come. */
+async function OpenEvents({ userId }: { userId: string }) {
+  const events = await db.event.findMany({
+    where: {
+      status: "PUBLISHED",
+      startsAt: { gte: new Date(Date.now() - 48 * 3600_000) },
+      invitations: { none: { userId, status: { in: ["ACCEPTED", "DECLINED"] } } },
+    },
+    orderBy: { startsAt: "asc" },
+    include: { shifts: true, invitations: { select: { status: true, userId: true, availabilities: true } } },
+  });
+  const open = events.filter((e) => !isEventLocked(e));
+
+  return (
+    <section>
+      <h2 className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
+        Ledige vagter {open.length > 0 && <span className="tabular-nums">({open.length})</span>}
+      </h2>
+      {open.length === 0 ? (
+        <p className="text-muted">Ingen arrangementer mangler svar fra dig lige nu.</p>
+      ) : (
+        <ul className="divide-y divide-line border-y border-fg">
+          {open.map((e) => {
+            const s = staffingSummary(e.shifts, e.invitations);
+            return (
+              <li key={e.id}>
+                <Link href={`/arrangementer/${e.id}`} className="flex gap-4 py-3 hover:bg-subtle">
+                  <div className="w-20 shrink-0 text-xs text-muted tabular-nums">
+                    <p className="first-letter:uppercase">{formatShortDay(e.startsAt)}</p>
+                    <p>{formatRange(e.startsAt, e.endsAt)}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{e.title}</p>
+                    <p className="truncate text-xs text-muted">{[formatEventRef(e), e.location].filter(Boolean).join(" · ")}</p>
+                  </div>
+                  <span className="self-center text-right text-xs">
+                    {s && (s.covered ? <span className="text-ok">Dækket</span> : <span className="text-warn">Mangler {s.missing}</span>)}
+                    <span className="block">Svar →</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -76,7 +125,7 @@ async function CoordinatorOverview() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{e.title}</p>
-                    <p className="truncate text-xs text-muted">{e.location}</p>
+                    <p className="truncate text-xs text-muted">{[formatEventRef(e), e.location].filter(Boolean).join(" · ")}</p>
                   </div>
                   <span className="self-center text-right text-xs">
                     {e.status === "DRAFT" ? (
@@ -102,7 +151,7 @@ async function CoordinatorOverview() {
 
 type Item = Prisma.InvitationGetPayload<{ include: { event: { include: { shifts: true } }; availabilities: true } }>;
 
-function List({ title, items, empty, highlight, muted }: { title: string; items: Item[]; empty?: string; highlight?: boolean; muted?: boolean }) {
+function List({ title, items, empty, muted }: { title: string; items: Item[]; empty?: string; muted?: boolean }) {
   return (
     <section>
       <h2 className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
@@ -111,7 +160,7 @@ function List({ title, items, empty, highlight, muted }: { title: string; items:
       {items.length === 0 ? (
         <p className="text-muted">{empty}</p>
       ) : (
-        <ul className={`divide-y divide-line border-y ${highlight ? "border-fg" : "border-line"}`}>
+        <ul className="divide-y divide-line border-y border-line">
           {items.map((i) => {
             const e = i.event;
             const eventDay = toDateInput(e.startsAt);
@@ -129,7 +178,6 @@ function List({ title, items, empty, highlight, muted }: { title: string; items:
                       {e.status === "CANCELLED" ? <span className="text-danger">Aflyst</span> : mine ? <span className="text-fg">{mine}</span> : e.location}
                     </p>
                   </div>
-                  {highlight && <span className="self-center text-xs">Svar →</span>}
                 </Link>
               </li>
             );

@@ -72,8 +72,10 @@ export function staffingSummary(shifts: Shift[], invitations: CoverageInvitation
   if (shifts.length === 0) return null;
   const coverage = [...eventCoverage(shifts, invitations).values()];
   const accepted = invitations.filter((i) => i.status === "ACCEPTED").length;
-  const pending = invitations.filter((i) => i.status === "PENDING").length;
-  return { covered: coverage.every((c) => c.gaps.length === 0), accepted, pending };
+  const declined = invitations.filter((i) => i.status === "DECLINED").length;
+  // The most people missing at any one time, as in the timeline's "Mangler (n)".
+  const missing = Math.max(0, ...shifts.flatMap((s) => coverage.find((c) => c.shiftId === s.id)!.gaps.map((g) => s.helpersNeeded - g.have)));
+  return { covered: coverage.every((c) => c.gaps.length === 0), accepted, declined, missing };
 }
 
 /** Shifts as offered in the answer form (helper and coordinator "Ret vagter"). */

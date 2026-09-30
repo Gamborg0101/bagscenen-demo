@@ -31,13 +31,14 @@ export default async function GuidePage() {
       </Step>
 
       <Step n={2} title="Vent på godkendelse">
-        <p>{capitalize(ORG.coordinator)} godkender din konto. Derefter kan du logge ind og se dine invitationer.</p>
+        <p>{capitalize(ORG.coordinator)} godkender din konto. Derefter kan du logge ind og se de kommende arrangementer.</p>
       </Step>
 
-      <Step n={3} title="Svar på invitationer">
-        <p>Nye invitationer til arrangementer, som mangler studentermedhjælpere, står øverst på forsiden.</p>
+      <Step n={3} title="Tag vagter">
+        <p>Arrangementer, som mangler studentermedhjælpere, står øverst på forsiden under <b>Ledige vagter</b>.</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Tryk <b>Ja, jeg kan</b> og vælg dine vagter. Tag gerne hele vagter — det gør det nemmere for alle.</li>
+          <li>Tryk <b>Tag vagter</b> og vælg dine vagter. Tag gerne hele vagter — det gør det nemmere for alle.</li>
+          <li>Kan du ikke? Tryk <b>Kan ikke deltage</b>, så ved {ORG.coordinator} det.</li>
           <li>Når du har sagt ja, kan du ikke selv ændre det. Kan du ikke alligevel, så kontakt {ORG.coordinator}.</li>
         </ul>
       </Step>

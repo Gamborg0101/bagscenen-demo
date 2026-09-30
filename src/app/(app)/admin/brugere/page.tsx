@@ -27,7 +27,17 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-10">
-      <h1 className="text-xl font-semibold tracking-tight">Brugere</h1>
+      <div className="space-y-3">
+        <h1 className="text-xl font-semibold tracking-tight">Brugere</h1>
+        <dl className="grid gap-x-3 gap-y-1.5 rounded-lg border border-line p-3 text-sm sm:grid-cols-[auto_1fr]">
+          <dt className="font-medium">Medhjælper</dt>
+          <dd className="text-muted">Ser kommende arrangementer, tager vagter eller siger “kan ikke”, og kan redigere kanalplaner på de arrangementer, de er på.</dd>
+          <dt className="font-medium">Tovholder</dt>
+          <dd className="text-muted">Som medhjælper, og kan desuden oprette og redigere arrangementer og bestillinger, sætte folk på vagter, godkende nye brugere og lave nulstillingslinks.</dd>
+          <dt className="font-medium">Admin</dt>
+          <dd className="text-muted">Som tovholder, og kan desuden ændre roller, se loggen og slette deaktiverede brugeres data.</dd>
+        </dl>
+      </div>
 
       <Section title="Afventer godkendelse" count={pending.length} empty="Ingen nye tilmeldinger.">
         {pending.map((u) => (

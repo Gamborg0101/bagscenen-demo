@@ -3,6 +3,7 @@ import { shiftName, shiftTimeText } from "@/lib/events/format";
 import { EVENT_STATUS_LABEL, EVENT_TYPE_LABEL } from "@/lib/events/labels";
 import type { EventWithRelations } from "@/lib/events/queries";
 import { requirementSections, type RequirementSection } from "@/lib/events/requirements";
+import { formatEventRef } from "@/lib/events/ref";
 
 type Staffing = Record<string, { have: number; hasGaps: boolean }>;
 
@@ -29,7 +30,7 @@ export function EventSheet({
     <article className="space-y-8">
       <header className="space-y-1">
         <p className="text-xs text-muted">
-          {EVENT_TYPE_LABEL[event.eventType]}
+          <span className="tabular-nums">{formatEventRef(event)}</span> · {EVENT_TYPE_LABEL[event.eventType]}
           {event.location && ` · ${event.location}`}
           {event.status !== "PUBLISHED" && (
             <span className={`ml-2 rounded border px-1.5 py-0.5 ${event.status === "CANCELLED" ? "border-danger text-danger" : "border-line"}`}>
@@ -150,13 +151,21 @@ function RequirementBlock({ section, heading = true }: { section: RequirementSec
   );
 }
 
+/** How full a shift is: a small filled bar plus "1/2". */
 function StaffingBadge({ needed, staffing }: { needed: number; staffing?: { have: number; hasGaps: boolean } }) {
-  if (!staffing) return <p className="w-14 text-right text-xs text-muted tabular-nums">{needed} pers.</p>;
-  const color = !staffing.hasGaps ? "text-ok" : staffing.have === 0 ? "text-danger" : "text-warn";
+  if (!staffing) return <p className="w-24 text-right text-xs text-muted tabular-nums">{needed} pers.</p>;
+  const full = !staffing.hasGaps;
+  const tone = full ? "ok" : staffing.have === 0 ? "danger" : "warn";
+  const pct = full ? 100 : Math.min(100, Math.round((staffing.have / Math.max(needed, 1)) * 100));
   return (
-    <p className={`w-14 text-right text-xs tabular-nums ${color}`} title={staffing.hasGaps ? "Mangler medhjælp" : "Dækket"}>
-      {staffing.have}/{needed}
-    </p>
+    <div className="flex w-24 shrink-0 items-center gap-2 self-center" title={full ? "Dækket" : "Mangler medhjælp"}>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line" role="img" aria-label={`${staffing.have} af ${needed} på`}>
+        <div className={`h-full rounded-full ${tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : "bg-danger"}`} style={{ width: `${Math.max(pct, 0)}%` }} />
+      </div>
+      <span className={`text-xs tabular-nums ${tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : "text-danger"}`}>
+        {staffing.have}/{needed}
+      </span>
+    </div>
   );
 }
 

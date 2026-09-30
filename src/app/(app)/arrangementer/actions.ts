@@ -65,18 +65,31 @@ async function applyAnswer(invitation: InvitationWithEvent, input: unknown, acto
 }
 
 /**
- * A helper answers their own invitation. Once they have said yes, only the coordinator
- * can change or cancel their shifts (so nothing changes without the coordinator knowing).
+ * A helper takes shifts on an event, or says they can't come ("Kan ikke deltage"). Every helper may
+ * answer any published event that isn't over; the answer row is created on the first answer.
+ * Once they have said yes, only the coordinator can change or cancel their shifts
+ * (so nothing changes without the coordinator knowing).
  */
 export async function respondToEvent(eventId: string, input: unknown): Promise<ActionResult> {
   const user = await requireUser();
   z.cuid().parse(eventId);
-  const invitation = await db.invitation.findUnique({
+  const event = await db.event.findUnique({ where: { id: eventId }, select: { status: true, startsAt: true, endsAt: true } });
+  if (!event || event.status === "DRAFT") return { error: "Arrangementet findes ikke." };
+
+  let invitation = await db.invitation.findUnique({
     where: { eventId_userId: { eventId, userId: user.id } },
     include: { event: { include: { shifts: true } } },
   });
-  if (!invitation || invitation.event.status === "DRAFT") return { error: "Du er ikke inviteret til dette arrangement." };
-  if (invitation.status === "ACCEPTED") return { error: "Du er allerede på. Kontakt koordinatoren, hvis noget skal ændres." };
+  if (invitation?.status === "ACCEPTED") return { error: "Du er allerede på. Kontakt koordinatoren, hvis noget skal ændres." };
+  if (!invitation) {
+    if (event.status !== "PUBLISHED" || isEventLocked(event)) return { error: "Arrangementet tager ikke imod svar." };
+    invitation = await db.invitation.upsert({
+      where: { eventId_userId: { eventId, userId: user.id } },
+      create: { eventId, userId: user.id },
+      update: {},
+      include: { event: { include: { shifts: true } } },
+    });
+  }
   const status = responseSchema.safeParse(input).data?.status;
   return applyAnswer(invitation, input, user.id, status === "DECLINED" ? "invitation.decline" : "invitation.accept");
 }
@@ -98,7 +111,7 @@ export async function addNote(eventId: string, body: string): Promise<ActionResu
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const event = await db.event.findUnique({ where: { id: eventId }, select: { status: true, startsAt: true, endsAt: true } });
-  if (!event || !(await canViewEvent(user, eventId, event.status))) return { error: "Ikke tilladt" };
+  if (!event || !(await canViewEvent(user, { id: eventId, ...event }))) return { error: "Ikke tilladt" };
   if (isEventLocked(event) && !hasRole(user.role, "LEAD")) return { error: "Arrangementet er afsluttet." };
 
   await db.eventNote.create({ data: { eventId, authorId: user.id, body: parsed.data } });

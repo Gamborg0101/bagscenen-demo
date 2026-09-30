@@ -21,8 +21,9 @@ event actually needed got lost between messages.
 Bagscenen replaces the chat threads:
 
 - The **coordinator** turns the meeting notes into an event — a form built around the venue's own checklist (stage,
-  sound, light, chairs) that only shows the fields that matter — and invites helpers.
-- **Helpers** answer from their phone: take whole shifts, or say exactly when they can come ("15–16 and after 17").
+  sound, light, chairs) that only shows the fields that matter — and publishes it.
+- **Helpers** see every upcoming event on their phone and take shifts themselves — whole shifts, or exactly when they
+  can come ("15–16 and after 17") — or tap "can't attend" so the coordinator knows who won't come.
 - A **timeline** shows who is on when, and a red bar shows where people are still missing.
 - Everyone on the event sees the organiser's contact details, each other's phone numbers, and a shared log of what
   was agreed.
@@ -34,16 +35,18 @@ Bagscenen replaces the chat threads:
 **For the coordinator**
 - Event form mirroring the venue's checklist; standard shifts (set-up · event · take-down) generated from the event
   times, including open-ended take-down and "about 2 hours, ready by 19:00" shifts where helpers pick their own start.
-- Invite helpers, follow answers, and adjust anyone's shifts. Helpers answer once; changes go through the coordinator.
+- Every event gets a readable id (`2026-012`). Follow who's on, who can't come and who hasn't answered; put a named
+  helper on directly and adjust anyone's shifts. Helpers answer once; changes go through the coordinator.
 - Coverage timeline per event and "missing helpers" across the event list.
 - **Booking links:** send an organiser a one-time link to fill in the checklist themselves (Danish/English), then turn
   it into an event with one click.
 - **Channel plans** for sound — per event and per band: mixer-aware input numbering (stagebox vs. local inputs),
-  templates, paste from Excel, DI/48V summary, print-to-PDF with a QR code, and time-limited read-only share links.
+  templates, paste from Excel, DI/48V summary, print-to-PDF with a QR code, and time-limited read-only share links
+  that say "the plan has changed" instead of showing an outdated plan.
 - Approve new accounts, assign roles, generate password-reset links, audit log.
 
 **For helpers**
-- New invitations first, then "my shifts", then the archive.
+- Open events first (with how many helpers are missing), then "my shifts", then the archive.
 - Call or mail the organiser directly; see who else is on and their numbers.
 - Add shifts to their calendar (.ics); install the site on the home screen.
 - Download their own data, edit it, or delete their account.
@@ -82,7 +85,8 @@ The app holds personal data about students, so it was designed to store as littl
 - **Sessions** are short-lived JWTs that only carry the user id and a session version. Role and status are re-read
   from the database on every request, so disabling someone or changing a password takes effect immediately.
 - **Authorisation** lives in one place per concern (`requireUser(role)`, `canViewEvent`, `canEditPlans`), and a helper
-  can only read events they were invited to — probing other ids returns the same 404 as a missing event.
+  sees upcoming published events but never drafts, and past events only if they took part — probing other ids returns
+  the same 404 as a missing event.
 - **Share links** for channel plans are HMAC-signed, versioned (revocable) and expire after 8 hours.
 - **Uploads** (band tech riders) must really be PDFs, are capped at 4 MB, and are served with a sandboxing CSP.
 - **Headers:** a per-request nonce-based Content-Security-Policy, HSTS, `frame-ancestors 'none'`, no `x-powered-by`.
@@ -94,7 +98,8 @@ The app holds personal data about students, so it was designed to store as littl
 - **Unit tests** (Vitest) for the domain logic: coverage and gaps, shift times, channel-plan parsing and
   paste-from-Excel, validation, date handling.
 - **End-to-end tests** (Playwright) against a production build: signup → approval → event with standard shifts →
-  invite → a helper answers with split time windows → the coordinator sees the gap; channel plans and QR sharing;
+  a helper takes shifts with split time windows or says they can't attend → the coordinator sees the gap; channel plans
+  and QR sharing (including the "plan has changed" check);
   booking links; session invalidation; the retention job. Each run creates its own throwaway database.
 - CI runs lint, type-check, unit tests, `npm audit` and the end-to-end suite on every push.
 

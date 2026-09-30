@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { EVENT_STATUS_LABEL, EVENT_TYPE_LABEL } from "@/lib/events/labels";
 import { requireUser } from "@/lib/session";
 import { staffingSummary } from "@/lib/events/view";
+import { formatEventRef, parseEventRef } from "@/lib/events/ref";
 
 export const metadata = { title: "Arrangementer · Bagscenen" };
 
@@ -17,6 +18,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const archive = vis === "arkiv";
   const query = q?.trim().slice(0, 100) ?? "";
   const eventType = type && type in EVENT_TYPE_LABEL ? (type as EventType) : undefined;
+  const ref = parseEventRef(query);
 
   // An event counts as upcoming until the day after it starts.
   const cutoff = new Date(Date.now() - 24 * 3600_000);
@@ -25,6 +27,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
     ...(eventType && { eventType }),
     ...(query && {
       OR: [
+        ...(ref ? [{ refNumber: ref.refNumber, ...(ref.refYear && { refYear: ref.refYear }) }] : []),
         { title: { contains: query, mode: "insensitive" } },
         { location: { contains: query, mode: "insensitive" } },
         { generalNotes: { contains: query, mode: "insensitive" } },
@@ -39,13 +42,14 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
     select: {
       id: true,
       title: true,
+      refYear: true,
+      refNumber: true,
       startsAt: true,
       endsAt: true,
       location: true,
       status: true,
       eventType: true,
       helpersWanted: true,
-      _count: { select: { shifts: true } },
       shifts: true,
       invitations: { select: { status: true, userId: true, availabilities: true } },
     },
@@ -73,7 +77,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
 
       <form className="flex gap-2">
         {archive && <input type="hidden" name="vis" value="arkiv" />}
-        <input name="q" defaultValue={query} placeholder="Søg titel, lokale, noter" className={inputClass} aria-label="Søg" />
+        <input name="q" defaultValue={query} placeholder="Søg id, titel, lokale, noter" className={inputClass} aria-label="Søg" />
         <select name="type" defaultValue={eventType ?? ""} className={`${inputClass} w-auto!`} aria-label="Type">
           <option value="">Alle typer</option>
           {(Object.keys(EVENT_TYPE_LABEL) as EventType[]).map((t) => (
@@ -99,16 +103,13 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 <div className="min-w-0 flex-1">
                   <p className={`truncate font-medium ${e.status === "CANCELLED" ? "line-through" : ""}`}>{e.title}</p>
                   <p className="truncate text-xs text-muted">
-                    {[e.location, EVENT_TYPE_LABEL[e.eventType]].filter(Boolean).join(" · ")}
+                    {[formatEventRef(e), e.location, EVENT_TYPE_LABEL[e.eventType]].filter(Boolean).join(" · ")}
                   </p>
-                  <p className="truncate text-xs text-muted">
-                    {[
-                      e._count.shifts ? `${e._count.shifts} ${e._count.shifts === 1 ? "vagt" : "vagter"}` : "Ingen vagter",
-                      e.helpersWanted != null && `${e.helpersWanted} ${e.helpersWanted === 1 ? "medhjælper" : "medhjælpere"}`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
+                  {e.helpersWanted != null && (
+                    <p className="truncate text-xs text-muted">
+                      {e.helpersWanted} {e.helpersWanted === 1 ? "medhjælper" : "medhjælpere"} ønsket
+                    </p>
+                  )}
                 </div>
                 {e.status !== "PUBLISHED" ? (
                   <span className={`self-center text-xs ${e.status === "CANCELLED" ? "text-danger" : "text-muted"}`}>
@@ -132,7 +133,7 @@ function Staffing({ summary }: { summary: ReturnType<typeof staffingSummary> }) 
     <span className="self-center text-right text-xs">
       <span className={summary.covered ? "text-ok" : "text-warn"}>{summary.covered ? "Dækket" : "Mangler medhjælp"}</span>
       <span className="block text-muted tabular-nums">
-        {summary.accepted} på{summary.pending > 0 && ` · ${summary.pending} afventer`}
+        {summary.accepted} på{summary.declined > 0 && ` · ${summary.declined} kan ikke`}
       </span>
     </span>
   );

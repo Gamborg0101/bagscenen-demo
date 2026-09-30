@@ -9,6 +9,7 @@ import { planSaveSchema, rowsToDb } from "@/lib/channel-plan";
 import { db } from "@/lib/db";
 import { canEditPlans, canViewEvent } from "@/lib/events/access";
 import { requireUser } from "@/lib/session";
+import { planContentHash } from "@/lib/plan-share";
 
 const SHARE_HOURS = 8;
 
@@ -22,7 +23,7 @@ async function editablePlan(planId: string) {
     where: { id: planId },
     include: { event: { select: { id: true, status: true, startsAt: true, endsAt: true } } },
   });
-  if (!plan || !(await canViewEvent(user, plan.eventId, plan.event.status)) || !(await canEditPlans(user, plan.event))) {
+  if (!plan || !(await canViewEvent(user, plan.event)) || !(await canEditPlans(user, plan.event))) {
     return { user, plan: null };
   }
   return { user, plan };
@@ -49,9 +50,9 @@ export async function createPlan(_prev: PlanActionResult, formData: FormData): P
   if (copyFrom) {
     const source = await db.channelPlan.findUnique({
       where: { id: copyFrom },
-      include: { channels: true, event: { select: { status: true } } },
+      include: { channels: true, event: { select: { id: true, status: true, startsAt: true, endsAt: true } } },
     });
-    if (!source || !(await canViewEvent(user, source.eventId, source.event.status))) return { error: "Planen kan ikke kopieres." };
+    if (!source || !(await canViewEvent(user, source.event))) return { error: "Planen kan ikke kopieres." };
     mixer = source.mixer;
     sourceName = source.kind === "BAND" ? source.name : "";
     channels = source.channels.map(({ id: _id, planId: _planId, ...c }) => c); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -61,7 +62,7 @@ export async function createPlan(_prev: PlanActionResult, formData: FormData): P
   if (!name) return { error: "Skriv bandets navn." };
 
   const event = await db.event.findUnique({ where: { id: eventId }, select: { id: true, status: true, startsAt: true, endsAt: true } });
-  if (!event || !(await canViewEvent(user, eventId, event.status)) || !(await canEditPlans(user, event))) return { error: "Ikke tilladt" };
+  if (!event || !(await canViewEvent(user, event)) || !(await canEditPlans(user, event))) return { error: "Ikke tilladt" };
   if (kind === "EVENT" && (await db.channelPlan.count({ where: { eventId, kind: "EVENT" } })) > 0) {
     return { error: "Arrangementet har allerede en kanalplan." };
   }
@@ -114,13 +115,20 @@ export async function setPlanShare(formData: FormData) {
   const { user, plan } = await editablePlan(planId);
   if (!plan) return;
   // Links always expire 8 hours after they are made; a new link invalidates the old one.
+  // The link remembers the plan's content, so the public page can tell when it has been changed since.
   const expires = new Date(Date.now() + SHARE_HOURS * 3600_000);
+  const channels = mode === "off" ? [] : await db.channel.findMany({ where: { planId } });
   await db.channelPlan.update({
     where: { id: planId },
     data:
       mode === "off"
-        ? { shareEnabled: false, shareExpiresAt: null, shareVersion: { increment: 1 } }
-        : { shareEnabled: true, shareExpiresAt: expires, shareVersion: { increment: 1 } },
+        ? { shareEnabled: false, shareExpiresAt: null, shareHash: null, shareVersion: { increment: 1 } }
+        : {
+            shareEnabled: true,
+            shareExpiresAt: expires,
+            shareHash: planContentHash({ name: plan.name, mixer: plan.mixer, channels }),
+            shareVersion: { increment: 1 },
+          },
   });
   await audit(user.id, `plan.share.${mode}`, "ChannelPlan", planId);
   revalidatePath(`/arrangementer/${plan.eventId}/kanalplan/${planId}`);

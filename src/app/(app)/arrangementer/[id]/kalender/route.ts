@@ -6,6 +6,7 @@ import { getEventWithRelations } from "@/lib/events/queries";
 import { buildIcs, type IcsEvent } from "@/lib/ics";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { formatEventRef } from "@/lib/events/ref";
 
 const TWO_HOURS = 2 * 3600_000;
 
@@ -15,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!z.cuid().safeParse(id).success) notFound();
   const event = await getEventWithRelations(id);
-  if (!event || !(await canViewEvent(user, id, event.status))) notFound();
+  if (!event || !(await canViewEvent(user, event))) notFound();
 
   const mine = await db.invitation.findUnique({
     where: { eventId_userId: { eventId: id, userId: user.id } },
@@ -37,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             end: end > w.start ? end : new Date(w.start.getTime() + TWO_HOURS),
             summary: `${shift ? shiftName(shift) : "Vagt"}: ${event.title}`,
             location: event.location,
-            description: `Se detaljer, kontaktpersoner og noter i Bagscenen:\n${url}`,
+            description: `${formatEventRef(event)} · Se detaljer, kontaktpersoner og noter i Bagscenen:\n${url}`,
             url,
           };
         })
@@ -48,7 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             end: fallbackEnd(event.startsAt),
             summary: event.title,
             location: event.location,
-            description: url,
+            description: `${formatEventRef(event)} · ${url}`,
             url,
           },
         ];

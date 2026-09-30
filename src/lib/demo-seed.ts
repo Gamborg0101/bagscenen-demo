@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { addDays, toDateInput, zonedToUtc } from "./datetime";
 import { DEMO_USERS } from "./demo-users";
 import { emptyIntake, intakeSchema } from "./events/intake";
+import { eventRefYear } from "./events/ref";
 import { ORG } from "./org";
 
 const TABLES = [
@@ -60,6 +61,15 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   // One new signup waiting for approval, so the users page has something to do.
   await db.user.create({ data: { firstName: "Ny", lastName: "Tilmelding", email: mail("ny.tilmelding"), phone: "20000019", passwordHash, status: "PENDING" } });
 
+  // Event ids ("2026-012") in the order the events are created here.
+  const refCounts = new Map<number, number>();
+  const nextRef = (startsAt: Date) => {
+    const refYear = eventRefYear(startsAt);
+    const refNumber = (refCounts.get(refYear) ?? 0) + 1;
+    refCounts.set(refYear, refNumber);
+    return { refYear, refNumber };
+  };
+
   const today = toDateInput(new Date());
   const day = (offset: number) => addDays(today, offset);
   const at = (offset: number, time: string) => zonedToUtc(day(offset), time);
@@ -67,6 +77,7 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   // 1. Concert with a band: shifts, helpers, channel plan, notes.
   const concert = await db.event.create({
     data: {
+      ...nextRef(at(3, "19:00")),
       title: "Forårskoncert med husbandet",
       startsAt: at(3, "19:00"),
       endsAt: at(3, "22:00"),
@@ -102,7 +113,7 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   await accept(db, concert.id, you.id, [setup, show]);
   await accept(db, concert.id, h.ane, [setup, show, strike]);
   await accept(db, concert.id, h.jonas, [strike], "Har forelæsning til kl. 21");
-  await db.invitation.create({ data: { eventId: concert.id, userId: h.freja } });
+  await db.invitation.create({ data: { eventId: concert.id, userId: h.freja, status: "DECLINED", respondedAt: new Date() } });
   await db.eventNote.createMany({
     data: [
       { eventId: concert.id, authorId: h.ane, body: "Aftalt med arrangøren: bandet ankommer kl. 16 ved varegården.", createdAt: new Date(Date.now() - 2 * 86_400_000) },
@@ -133,9 +144,10 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
     },
   });
 
-  // 2. Lecture with reception in the foyer. The demo helper has not answered yet.
+  // 2. Lecture with reception in the foyer. Open for the demo helper to take.
   const lecture = await db.event.create({
     data: {
+      ...nextRef(at(6, "14:00")),
       title: "Gæsteforelæsning og reception",
       startsAt: at(6, "14:00"),
       endsAt: at(6, "17:00"),
@@ -179,13 +191,13 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
     },
     include: { shifts: { orderBy: { startsAt: "asc" } } },
   });
-  await db.invitation.create({ data: { eventId: lecture.id, userId: you.id } });
   await accept(db, lecture.id, h.oliver, [lecture.shifts[0], lecture.shifts[1]]);
   await db.invitation.create({ data: { eventId: lecture.id, userId: h.sara, status: "DECLINED", respondedAt: new Date() } });
 
   // 3. Friday bar in the foyer, still short of people.
   const bar = await db.event.create({
     data: {
+      ...nextRef(at(10, "15:00")),
       title: "Fredagsbar: semesterstart",
       startsAt: at(10, "15:00"),
       endsAt: at(10, "20:00"),
@@ -210,11 +222,11 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
     include: { shifts: { orderBy: { startsAt: "asc" } } },
   });
   await accept(db, bar.id, h.freja, [bar.shifts[1]]);
-  await db.invitation.createMany({ data: [h.ane, h.jonas].map((userId) => ({ eventId: bar.id, userId })) });
 
   // 4. A draft the coordinator is still working on.
   await db.event.create({
     data: {
+      ...nextRef(at(17, "09:00")),
       title: "Temadag om bæredygtighed",
       startsAt: at(17, "09:00"),
       endsAt: at(17, "15:30"),
@@ -233,6 +245,7 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   // 5. A past event for the archive.
   const past = await db.event.create({
     data: {
+      ...nextRef(at(-20, "19:00")),
       title: "Julekoncert",
       startsAt: at(-20, "19:00"),
       endsAt: at(-20, "21:30"),

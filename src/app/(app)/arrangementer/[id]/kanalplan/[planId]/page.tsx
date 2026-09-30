@@ -8,7 +8,7 @@ import { buttonClass } from "@/components/styles";
 import { getPlan } from "@/lib/channel-plan-queries";
 import { formatDay, formatRange, formatStamp } from "@/lib/datetime";
 import { canEditPlans, canViewEvent } from "@/lib/events/access";
-import { planShareKey } from "@/lib/plan-share";
+import { planContentHash, planShareKey } from "@/lib/plan-share";
 import { qrSvg } from "@/lib/qr";
 import { requireUser } from "@/lib/session";
 import { appUrl } from "@/lib/url";
@@ -21,12 +21,13 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const { id, planId } = await params;
   if (!z.cuid().safeParse(planId).success) notFound();
   const plan = await getPlan(planId);
-  if (!plan || plan.eventId !== id || !(await canViewEvent(user, id, plan.event.status))) notFound();
+  if (!plan || plan.eventId !== id || !(await canViewEvent(user, plan.event))) notFound();
   const canEdit = await canEditPlans(user, plan.event);
 
   const shareActive = plan.shareEnabled && !!plan.shareExpiresAt && plan.shareExpiresAt > new Date();
   const shareUrl = shareActive ? `${await appUrl()}/kanalplan/${planShareKey(plan.id, plan.shareVersion)}` : null;
   const qr = shareUrl ? await qrSvg(shareUrl) : null;
+  const shareChanged = shareActive && !!plan.shareHash && planContentHash(plan) !== plan.shareHash;
 
   return (
     <div className="space-y-6">
@@ -73,6 +74,11 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
                 <p className="text-xs text-muted">
                   Alle med QR-koden eller linket kan se kanalplanen (kun læse, uden login). Den indeholder ingen personoplysninger.
                 </p>
+                {shareChanged && (
+                  <p className="rounded-md bg-subtle px-3 py-2 text-sm font-medium text-warn">
+                    Kanalplanen er ændret, siden QR-koden blev lavet. Den gamle kode viser nu “Kanalplanen er ændret” — lav en ny.
+                  </p>
+                )}
                 <p className="text-xs font-medium">Linket udløber {formatStamp(plan.shareExpiresAt!)}.</p>
                 <p className="text-xs break-all select-all">{shareUrl}</p>
                 {canEdit && (

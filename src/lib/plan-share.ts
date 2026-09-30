@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 // Public, read-only share links for channel plans. The key is derived from the plan id and a
 // version with an HMAC over AUTH_SECRET, so nothing secret is stored in the database and
@@ -33,4 +33,21 @@ export function parsePlanShareKey(key: string): { planId: string; matches: (vers
       return a.length === b.length && timingSafeEqual(a, b);
     },
   };
+}
+
+type PlanContent = {
+  name: string;
+  mixer: string;
+  channels: { number: number; source: string; gear: string | null; di: string; phantom: boolean; inputSource: string | null; inputNumber: number | null; note: string | null }[];
+};
+
+/**
+ * Fingerprint of what the public page shows. Stored when a share link is made, so the page can
+ * say "Kanalplanen er ændret" instead of showing a plan that no longer matches the QR code.
+ */
+export function planContentHash(plan: PlanContent): string {
+  const channels = [...plan.channels]
+    .sort((a, b) => a.number - b.number)
+    .map((c) => [c.number, c.source, c.gear, c.di, c.phantom, c.inputSource, c.inputNumber, c.note]);
+  return createHash("sha256").update(JSON.stringify([plan.name, plan.mixer, channels])).digest("base64url");
 }
