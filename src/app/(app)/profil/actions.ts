@@ -25,6 +25,8 @@ const profileSchema = z.object({
 
 export async function updateProfile(_prev: ProfileState, formData: FormData): Promise<ProfileState> {
   const user = await requireUser();
+  // The demo accounts are shared, so their names and numbers stay as they are.
+  if (isDemo()) return { error: DEMO_DISABLED_MESSAGE };
   const parsed = profileSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
   await db.user.update({ where: { id: user.id }, data: parsed.data });
