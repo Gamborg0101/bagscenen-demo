@@ -117,7 +117,7 @@ export function ResponseForm(p: Props) {
 
         {showWindows || p.shifts.length === 0 ? (
           <div className="space-y-2 border-l border-line pl-3">
-            <p className="text-xs text-muted">Kan du kun en del af tiden? Skriv hvornår — og gerne hvorfor i noten.</p>
+            <p className="text-xs text-muted">Kan du kun en del af tiden? Skriv, hvornår du kan.</p>
             {windows.map((w, i) => (
               <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
                 {p.multiDay && (

@@ -212,7 +212,6 @@ model Invitation {
   eventId     String
   userId      String
   status      InvitationStatus @default(PENDING)
-  note        String? // helper's comment, e.g. "har forelæsning 11–13:15"
   respondedAt DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt

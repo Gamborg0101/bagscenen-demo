@@ -53,12 +53,12 @@ function DemoLogin({ failed }: { failed: boolean }) {
         <form action={demoLoginAction}>
           <input type="hidden" name="role" value="coordinator" />
           <button className={`${buttonClass("primary")} w-full`}>Prøv som koordinator</button>
-          <p className="mt-1 text-xs text-muted">Opret arrangementer, invitér medhjælpere, se hvem der mangler.</p>
+          <p className="mt-1 text-xs text-muted">Opret arrangementer, sæt folk på vagter, se hvem der mangler.</p>
         </form>
         <form action={demoLoginAction}>
           <input type="hidden" name="role" value="helper" />
           <button className={`${buttonClass("secondary")} w-full`}>Prøv som medhjælper</button>
-          <p className="mt-1 text-xs text-muted">Svar på invitationer, vælg vagter, se hvem du er på med.</p>
+          <p className="mt-1 text-xs text-muted">Tag vagter eller sig “kan ikke”, og se hvem du er på med.</p>
         </form>
       </div>
       <p className="mt-6 text-xs text-muted">

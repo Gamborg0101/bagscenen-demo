@@ -15,7 +15,7 @@ export default async function PendingPage() {
       <h1 className="mb-2 text-xl font-semibold tracking-tight">Tak, {user.firstName}</h1>
       <p className="mb-6 text-muted">
         Din konto er oprettet og afventer godkendelse fra en koordinator. Når den er godkendt, kan du
-        se dine invitationer her.
+        se de kommende arrangementer og tage vagter her.
       </p>
       <form action={logoutAction}>
         <button className={buttonClass("secondary")}>Log ud</button>

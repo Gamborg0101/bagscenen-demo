@@ -5,15 +5,6 @@ import type { Window } from "@/lib/coverage";
 import { hasRole, type CurrentUser } from "@/lib/session";
 import { isEventLocked } from "./response";
 
-/** The viewer's own answer row for an event (if they have answered or been put on it). */
-export async function viewerInvitation(user: CurrentUser, eventId: string) {
-  const invitation = await db.invitation.findUnique({
-    where: { eventId_userId: { eventId, userId: user.id } },
-    include: { availabilities: { orderBy: { startsAt: "asc" } } },
-  });
-  return invitation;
-}
-
 type ViewableEvent = { id: string; status: string; startsAt: Date; endsAt: Date | null };
 
 /**
@@ -32,7 +23,7 @@ export async function canViewEvent(user: CurrentUser, event: ViewableEvent): Pro
   return !!inv;
 }
 
-/** Everyone invited to the event, with their windows, for coverage and co-helper lists. */
+/** Everyone with an answer on the event, with their windows, for coverage and co-helper lists. */
 export function eventInvitations(eventId: string) {
   return db.invitation.findMany({
     where: { eventId },

@@ -99,7 +99,7 @@ export async function setHelperAnswer(invitationId: string, input: unknown): Pro
   const actor = await requireUser("LEAD");
   z.cuid().parse(invitationId);
   const invitation = await db.invitation.findUnique({ where: { id: invitationId }, include: { event: { include: { shifts: true } } } });
-  if (!invitation) return { error: "Invitationen findes ikke længere." };
+  if (!invitation) return { error: "Medhjælperen er ikke længere på arrangementet." };
   const status = responseSchema.safeParse(input).data?.status;
   return applyAnswer(invitation, input, actor.id, status === "DECLINED" ? "invitation.coordinator_decline" : "invitation.coordinator_update");
 }
@@ -112,7 +112,12 @@ export async function addNote(eventId: string, body: string): Promise<ActionResu
 
   const event = await db.event.findUnique({ where: { id: eventId }, select: { status: true, startsAt: true, endsAt: true } });
   if (!event || !(await canViewEvent(user, { id: eventId, ...event }))) return { error: "Ikke tilladt" };
-  if (isEventLocked(event) && !hasRole(user.role, "LEAD")) return { error: "Arrangementet er afsluttet." };
+  if (!hasRole(user.role, "LEAD")) {
+    if (isEventLocked(event)) return { error: "Arrangementet er afsluttet." };
+    // "Aftaler & noter" is for the people working the event.
+    const mine = await db.invitation.findUnique({ where: { eventId_userId: { eventId, userId: user.id } }, select: { status: true } });
+    if (mine?.status !== "ACCEPTED") return { error: "Tag en vagt for at skrive noter." };
+  }
 
   await db.eventNote.create({ data: { eventId, authorId: user.id, body: parsed.data } });
   revalidateEvent(eventId);

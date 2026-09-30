@@ -2,7 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 
 /**
- * Base URL for links we hand out (reset, invite, booking). In production this comes from
+ * Base URL for links we hand out (reset, booking, channel-plan share). In production this comes from
  * APP_URL so a forged Host header can never make us generate links to another domain.
  */
 export async function appUrl(): Promise<string> {

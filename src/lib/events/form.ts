@@ -40,7 +40,6 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
  * A shift is either a fixed time window, or a duration anchored to a time:
  * set-up must be ready by the anchor; other kinds start at the anchor.
  */
-export type ShiftMode = "FIXED" | "DURATION";
 export const anchorIsDeadline = (kind: ShiftKind) => kind === "OPSAETNING";
 
 const shiftSchema = z

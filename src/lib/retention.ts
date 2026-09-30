@@ -34,7 +34,6 @@ export async function runRetention() {
   const contacts = await db.eventContact.deleteMany({ where: { event: oldEvents } });
   const notes = await db.eventNote.deleteMany({ where: { event: oldEvents } });
   const techRiders = await db.techRider.deleteMany({ where: { plan: { event: oldEvents } } });
-  const helperComments = await db.invitation.updateMany({ where: { event: oldEvents, note: { not: null } }, data: { note: null } });
 
   const requests = await db.eventRequest.deleteMany({
     where: {
@@ -57,7 +56,6 @@ export async function runRetention() {
     eventContacts: contacts.count,
     eventNotes: notes.count,
     techRiders: techRiders.count,
-    helperComments: helperComments.count,
     requests: requests.count,
     auditLog: audit.count,
     resetTokens: resetTokens.count,

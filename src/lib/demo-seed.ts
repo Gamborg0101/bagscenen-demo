@@ -112,7 +112,7 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   const [setup, show, strike] = concert.shifts;
   await accept(db, concert.id, you.id, [setup, show]);
   await accept(db, concert.id, h.ane, [setup, show, strike]);
-  await accept(db, concert.id, h.jonas, [strike], "Har forelæsning til kl. 21");
+  await accept(db, concert.id, h.jonas, [strike]);
   await db.invitation.create({ data: { eventId: concert.id, userId: h.freja, status: "DECLINED", respondedAt: new Date() } });
   await db.eventNote.createMany({
     data: [
@@ -302,13 +302,12 @@ export async function resetDemoData(db: PrismaClient, opts: { allowOutsideDemo?:
   });
 }
 
-async function accept(db: PrismaClient, eventId: string, userId: string, shifts: { id: string; startsAt: Date; endsAt: Date | null }[], note?: string) {
+async function accept(db: PrismaClient, eventId: string, userId: string, shifts: { id: string; startsAt: Date; endsAt: Date | null }[]) {
   await db.invitation.create({
     data: {
       eventId,
       userId,
       status: "ACCEPTED",
-      note,
       respondedAt: new Date(),
       availabilities: { create: shifts.map((s) => ({ shiftId: s.id, startsAt: s.startsAt, endsAt: s.endsAt })) },
     },

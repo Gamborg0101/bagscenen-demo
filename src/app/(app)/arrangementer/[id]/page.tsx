@@ -95,7 +95,7 @@ export default async function HelperEventPage({ params }: { params: Promise<{ id
         }
       >
         <PlansSection eventId={event.id} plans={plans} bands={event.bands} canEdit={canEditPlanList} sources={canEditPlanList ? await copySources(user, id) : []} />
-        <NotesLog eventId={event.id} notes={notesView(notes, user)} canWrite={!isEventLocked(event)} />
+        <NotesLog eventId={event.id} notes={notesView(notes, user)} canWrite={mine.status === "ACCEPTED" && !isEventLocked(event)} />
       </EventSheet>
     </div>
   );

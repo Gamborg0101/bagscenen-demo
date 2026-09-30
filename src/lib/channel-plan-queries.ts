@@ -14,8 +14,6 @@ export function getPlan(planId: string) {
   });
 }
 
-export type PlanWithEvent = NonNullable<Awaited<ReturnType<typeof getPlan>>>;
-
 export function eventPlans(eventId: string) {
   return db.channelPlan.findMany({
     where: { eventId },
@@ -24,7 +22,7 @@ export function eventPlans(eventId: string) {
   });
 }
 
-/** Plans the user may copy from: any for coordinators, otherwise only events they're invited to. */
+/** Plans the user may copy from: any for coordinators, otherwise only events they have answered. */
 export async function copySources(user: CurrentUser, excludeEventId: string) {
   const plans = await db.channelPlan.findMany({
     where: {

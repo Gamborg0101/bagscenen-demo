@@ -39,8 +39,8 @@ export default function PrivacyPage() {
       <Section title="Studentermedhjælpere: hvad vi gemmer">
         <ul className="list-disc space-y-1 pl-5">
           <li>Fornavn, efternavn, {ORG.emailLabel} og telefonnummer</li>
-          <li>Dine svar på invitationer, de tidsrum du har meldt dig til, og de noter du selv skriver</li>
-          <li>En log over handlinger i systemet (fx at du loggede ind eller svarede på en invitation)</li>
+          <li>Dine svar på arrangementer (hvilke vagter og tidsrum du tager, eller at du ikke kan), og de noter du selv skriver</li>
+          <li>En log over handlinger i systemet (fx at du loggede ind eller tog en vagt)</li>
           <li>Din adgangskode — kun som et envejs-hash, som ingen kan læse</li>
         </ul>
         <p>
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
           <li>Tilmeldinger, der ikke bliver godkendt, slettes efter {r.pendingSignupDays} dage.</li>
           <li>Deaktiverede konti anonymiseres efter {r.disabledUserDays} dage. Du kan selv slette din konto når som helst.</li>
           <li>
-            Kontaktpersoner, noter, kommentarer og techriders på et arrangement slettes {r.eventPersonalDataDays} dage efter
+            Kontaktpersoner, noter og techriders på et arrangement slettes {r.eventPersonalDataDays} dage efter
             arrangementet. Selve arrangementet (teknik og vagter) bevares uden personoplysninger.
           </li>
           <li>Bestillinger, der ikke bliver til et arrangement, slettes efter {r.requestDays} dage.</li>

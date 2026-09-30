@@ -89,7 +89,6 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
                         {i.availabilities.length > 0 && (
                           <p className="text-xs tabular-nums">{describeAvailability(i.availabilities, event.shifts, eventDay).join(", ")}</p>
                         )}
-                        {i.note && <p className="text-xs text-muted">“{i.note}”</p>}
                       </div>
                       <div className="flex items-center gap-3 text-xs">
                         {!i.user.anonymizedAt && (

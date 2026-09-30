@@ -80,7 +80,6 @@ test.beforeAll(async () => {
       userId: other.id,
       status: "ACCEPTED",
       respondedAt: new Date(),
-      note: "Har forelæsning til 16",
       availabilities: {
         create: [
           { shiftId: setup.id, startsAt: h(-2.5), endsAt: h(-0.5) },
