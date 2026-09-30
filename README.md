@@ -116,6 +116,14 @@ Without `DEMO_MODE`, the app runs normally: sign up with an address on an allowe
 
 Tests: `npm test` (unit) and `npm run test:e2e` (end-to-end; needs the Docker database).
 
+## How it was built
+
+I built Bagscenen with AI assistance, using Claude Code (Anthropic's AI coding assistant) as a pair programmer. The
+problem, the requirements and the product decisions came from me and the day-to-day work at the venue: what the event
+form asks for, how shifts and answers should work, what data to keep and what to leave out. I directed the work
+feature by feature, reviewed the result in the app and adjusted it. Much of the code itself was written with the
+assistant.
+
 ## About the demo
 
 This repository is the portfolio copy of an app that runs for real at a university venue. The organisation-specific
