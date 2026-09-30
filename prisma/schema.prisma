@@ -1,0 +1,392 @@
+// Bagscenen — data model.
+// Personal data is deliberately limited to firstName, lastName, email and phone.
+// All DateTime values are stored in UTC and displayed in Europe/Copenhagen.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ---------- Users & auth ----------
+
+enum Role {
+  ADMIN
+  LEAD
+  HELPER
+}
+
+enum UserStatus {
+  PENDING // signed up, awaiting approval by ADMIN/LEAD
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id             String     @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String     @unique // lowercased, allowed signup domains only
+  phone          String
+  passwordHash   String
+  role           Role       @default(HELPER)
+  status         UserStatus @default(PENDING)
+  anonymizedAt   DateTime? // set when the user deletes their account (GDPR)
+  disabledAt     DateTime? // when the account was deactivated (drives automatic deletion)
+  // Bumped on password change/reset/deactivation; older sessions stop working.
+  sessionVersion Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  invitations   Invitation[]
+  eventsCreated Event[]              @relation("EventCreatedBy")
+  resetTokens   PasswordResetToken[]
+  auditLogs     AuditLog[]
+  eventNotes    EventNote[]
+  eventRequests EventRequest[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique // SHA-256 of the raw token; raw token is never stored
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Postgres-backed rate limiting for login / signup / reset.
+model AuthAttempt {
+  id        String   @id @default(cuid())
+  key       String // e.g. "login:<ip>" or "login:<email-hash>"
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+// ---------- Events ----------
+
+enum EventType {
+  KONFERENCE
+  OPLAEG_DEBAT
+  KONCERT
+  FREDAGSBAR
+  FEST
+  RECEPTION
+  UNDERVISNING
+  ANDET
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum LightingPreset {
+  INGEN
+  KONFERENCE
+  UNDERVISNING
+  KONCERT
+  FEST
+  STEMNING
+}
+
+model Event {
+  id                String      @id @default(cuid())
+  title             String
+  startsAt          DateTime
+  endsAt            DateTime?
+  location          String?
+  eventType         EventType   @default(ANDET)
+  status            EventStatus @default(DRAFT)
+  expectedAttendees Int?
+  helpersWanted     Int?
+
+  // Scene / podier
+  needsStage     Boolean @default(false)
+  stageSize      String? // e.g. "3x3"
+  podiumHeightCm Int?
+  lectern        Boolean @default(false) // talerstol
+  stageNotes     String?
+
+  // Projektor / AV
+  projector Boolean @default(false)
+  pcAudio   Boolean @default(false) // lyd til computer
+
+  // Lyd
+  handheldMics   Int     @default(0)
+  headsetMics    Int     @default(0) // beltpack / microport
+  micPurpose     String?
+  bands          Boolean @default(false)
+  bandCount      Int?
+  techRiderNotes String?
+  soundNotes     String?
+
+  // Lys
+  lightingPreset LightingPreset @default(INGEN)
+  lightingNotes  String?
+
+  // Møblering
+  chairs         Int?
+  tables         Int? // tables, e.g. for studying
+  otherFurniture String?
+
+  // Foyer (used alongside Store sal / Lille sal)
+  foyerUsed           Boolean @default(false)
+  foyerPodiums        Int     @default(0)
+  foyerPodiumSize     String? // e.g. "2x2" (m)
+  foyerPodiumHeightCm Int?
+  foyerMics           Int     @default(0)
+  foyerSound          Boolean @default(false) // sound from the house system
+  foyerTables         Int     @default(0) // lightweight tables
+
+  // Andet
+  extraNotes String?
+
+  generalNotes String?
+
+  createdById String?
+  createdBy   User?    @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shifts       Shift[]
+  invitations  Invitation[]
+  contacts     EventContact[]
+  notes        EventNote[]
+  request      EventRequest?
+  channelPlans ChannelPlan[]
+
+  @@index([startsAt])
+}
+
+enum ShiftKind {
+  OPSAETNING
+  AFVIKLING
+  NEDTAGNING
+  ANDET
+}
+
+model Shift {
+  id              String    @id @default(cuid())
+  eventId         String
+  kind            ShiftKind
+  label           String?
+  startsAt        DateTime
+  endsAt          DateTime? // null = open-ended ("indtil færdig")
+  // Set for "duration" shifts (e.g. set-up takes ~2 h, must be ready by the start):
+  // helpers then choose their own start time. Null = fixed time window.
+  durationMinutes Int?
+  helpersNeeded   Int       @default(1)
+  notes           String?
+
+  event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  availabilities Availability[]
+
+  @@index([eventId])
+}
+
+// ---------- Invitations & availability ----------
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  eventId     String
+  userId      String
+  status      InvitationStatus @default(PENDING)
+  note        String? // helper's comment, e.g. "har forelæsning 11–13:15"
+  respondedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availabilities Availability[]
+
+  @@unique([eventId, userId])
+  @@index([userId])
+}
+
+// One row per time window a helper covers. Either a whole shift block
+// (shiftId set, times copied from the shift) or a custom window.
+model Availability {
+  id           String    @id @default(cuid())
+  invitationId String
+  shiftId      String?
+  startsAt     DateTime
+  endsAt       DateTime? // null = "until done" (only meaningful for open-ended shifts)
+
+  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  shift      Shift?     @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@index([invitationId])
+  @@index([shiftId])
+}
+
+// People on the organiser side that helpers contact directly
+// (e.g. "arrangør", "catering", "taler"). Not portal users.
+model EventContact {
+  id      String  @id @default(cuid())
+  eventId String
+  name    String
+  role    String? // "Arrangør", "Taler", "Catering", ...
+  email   String?
+  phone   String?
+  sortKey Int     @default(0)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// Shared log on an event: helpers record what they agreed with the organiser,
+// admins/leads follow along.
+model EventNote {
+  id        String   @id @default(cuid())
+  eventId   String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+
+  event  Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
+}
+
+// ---------- Channel plans (input lists) ----------
+
+enum PlanKind {
+  EVENT // the event's own plan (e.g. speaker mics) — at most one per event
+  BAND
+}
+
+enum Mixer {
+  SQ7
+  SQ5
+  MACKIE
+}
+
+enum DiType {
+  NONE
+  MONO
+  STEREO
+}
+
+enum InputSource {
+  STAGEBOX // the AR2412 + chained AB168, numbered 1–40
+  MIXER // local inputs on the back of the mixer
+}
+
+model ChannelPlan {
+  id             String     @id @default(cuid())
+  eventId        String
+  kind           PlanKind
+  name           String // "Arrangementet" or the band's name
+  mixer          Mixer      @default(SQ7)
+  sortKey        Int        @default(0)
+  // Public read-only share link. The token is derived (HMAC) from this version, so nothing
+  // secret is stored; bumping the version switches the old link off.
+  shareEnabled   Boolean    @default(false)
+  shareVersion   Int        @default(0)
+  shareExpiresAt DateTime? // links stop working after this (8 hours after creation)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  channels       Channel[]
+  techRider      TechRider?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// The band's techrider (PDF), stored in the EU database — never on a public URL.
+// May contain the band's contact details, so it follows the event's retention rules.
+model TechRider {
+  id           String   @id @default(cuid())
+  planId       String   @unique
+  filename     String
+  size         Int
+  sha256       String
+  data         Bytes
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  plan ChannelPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+// One row in a channel plan.
+model Channel {
+  id          String       @id @default(cuid())
+  planId      String
+  number      Int // mixer channel
+  source      String // what is miked: "Kick in", "Vokal"
+  gear        String? // microphone model, e.g. "Shure SM57"
+  di          DiType       @default(NONE)
+  phantom     Boolean      @default(false) // 48V
+  inputSource InputSource?
+  inputNumber Int?
+  note        String?
+
+  plan ChannelPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, number])
+}
+
+// ---------- Organiser booking requests ----------
+
+enum RequestStatus {
+  OPEN // link created, not yet filled in
+  SUBMITTED // organiser has sent the form
+  CONVERTED // turned into an event
+  ARCHIVED // declined or no longer relevant
+}
+
+// A one-time link sent to an organiser. The organiser fills in the digital
+// version of the helper guide; a coordinator turns it into an event.
+model EventRequest {
+  id          String        @id @default(cuid())
+  tokenHash   String        @unique
+  label       String // who it was sent to, e.g. "Institut for Kultur og Samfund"
+  status      RequestStatus @default(OPEN)
+  expiresAt   DateTime
+  submittedAt DateTime?
+  data        Json? // validated with intakeSchema (src/lib/events/intake.ts)
+  createdById String?
+  eventId     String?       @unique
+  createdAt   DateTime      @default(now())
+
+  createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  event     Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+// ---------- Audit ----------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String // e.g. "user.approve", "event.create"
+  entity    String
+  entityId  String?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}

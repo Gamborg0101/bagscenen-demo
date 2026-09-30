@@ -1,0 +1,17 @@
+name: bagscenen
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bagscenen
+      POSTGRES_PASSWORD: bagscenen
+      POSTGRES_DB: bagscenen
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

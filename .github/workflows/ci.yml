@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: bagscenen
+          POSTGRES_PASSWORD: bagscenen
+          POSTGRES_DB: bagscenen
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bagscenen"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://bagscenen:bagscenen@localhost:5433/bagscenen
+      DATABASE_URL_UNPOOLED: postgresql://bagscenen:bagscenen@localhost:5433/bagscenen
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else-0000000
+      APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
