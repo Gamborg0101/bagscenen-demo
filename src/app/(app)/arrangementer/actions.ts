@@ -7,7 +7,11 @@ import { audit } from "@/lib/audit";
 import { zonedTimeAfter, zonedToUtc } from "@/lib/datetime";
 import { db } from "@/lib/db";
 import { canViewEvent } from "@/lib/events/access";
+import { lockEventStaffing, newlyOverbooked } from "@/lib/events/capacity";
+import { shiftName } from "@/lib/events/format";
+import { carryHolds, needsApproval } from "@/lib/events/holds";
 import { isEventLocked, noteSchema, responseSchema } from "@/lib/events/response";
+import { heldInvitations } from "@/lib/events/view";
 import { hasRole, requireUser } from "@/lib/session";
 
 export type ActionResult = { ok?: boolean; error?: string };
@@ -20,11 +24,16 @@ function revalidateEvent(eventId: string) {
 
 type InvitationWithEvent = Prisma.InvitationGetPayload<{ include: { event: { include: { shifts: true } } } }>;
 
-/** Writes an answer (shifts / own time windows, or a decline) to an invitation. */
-async function applyAnswer(invitation: InvitationWithEvent, input: unknown, actorId: string, action: string): Promise<ActionResult> {
+/**
+ * Writes an answer (shifts / own time windows, or a decline) to an invitation.
+ * Whole shifts are free to take; a helper's own time window is an application with a reason that
+ * waits for the coordinator's OK, and other helpers can't take the places it holds meanwhile.
+ * The coordinator's changes need no OK.
+ */
+async function applyAnswer(invitation: InvitationWithEvent, input: unknown, actorId: string, action: string, byHelper: boolean): Promise<ActionResult> {
   const parsed = responseSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Ugyldigt svar" };
-  const { status, shifts: picks, windows } = parsed.data;
+  const { status, shifts: picks, windows, reason } = parsed.data;
   const event = invitation.event;
   if (isEventLocked(event)) return { error: "Arrangementet er afsluttet." };
   if (status === "ACCEPTED" && event.status === "CANCELLED") return { error: "Arrangementet er aflyst." };
@@ -54,11 +63,38 @@ async function applyAnswer(invitation: InvitationWithEvent, input: unknown, acto
           }),
         ];
 
-  await db.$transaction([
-    db.availability.deleteMany({ where: { invitationId: invitation.id } }),
-    db.availability.createMany({ data: rows.map((r) => ({ ...r, invitationId: invitation.id })) }),
-    db.invitation.update({ where: { id: invitation.id }, data: { status, respondedAt: new Date() } }),
-  ]);
+  const applying = needsApproval(event.shifts, rows);
+  if (byHelper && applying && !reason) return { error: "Skriv kort, hvorfor du ikke kan tage hele vagter." };
+
+  const full = await db.$transaction(async (tx) => {
+    // Re-read under the lock: someone else may have taken the last place since the page loaded.
+    await lockEventStaffing(tx, event.id);
+    const shifts = await tx.shift.findMany({ where: { eventId: event.id } });
+    const invitations = await tx.invitation.findMany({ where: { eventId: event.id }, include: { availabilities: true } });
+    const mine = rows.map((r, i) => ({ ...r, id: `new-${i}`, invitationId: invitation.id }));
+    const after = invitations.map((i) => (i.id === invitation.id ? { ...i, status, availabilities: mine, partialApproval: null } : i));
+    const before = byHelper ? heldInvitations(shifts, invitations) : invitations;
+    const overbooked = newlyOverbooked({ shifts, invitations: before }, { shifts, invitations: byHelper ? carryHolds(before, after) : after });
+    if (overbooked) return overbooked;
+
+    await tx.availability.deleteMany({ where: { invitationId: invitation.id } });
+    await tx.availability.createMany({ data: rows.map((r) => ({ ...r, invitationId: invitation.id })) });
+    await tx.invitation.update({
+      where: { id: invitation.id },
+      data: {
+        status,
+        respondedAt: new Date(),
+        partialApproval: byHelper && applying ? "PENDING" : null,
+        // A coordinator's change keeps the helper's reason while own windows remain.
+        partialReason: !applying ? null : byHelper ? reason : invitation.partialReason,
+      },
+    });
+    return null;
+  });
+  if (full) {
+    revalidateEvent(event.id);
+    return { error: `${shiftName(full)} har allerede ${full.helpersNeeded} på i det tidsrum. Genindlæs siden for at se, hvor der mangler folk.` };
+  }
   await audit(actorId, action, "Invitation", invitation.id);
   revalidateEvent(event.id);
   return { ok: true };
@@ -91,7 +127,7 @@ export async function respondToEvent(eventId: string, input: unknown): Promise<A
     });
   }
   const status = responseSchema.safeParse(input).data?.status;
-  return applyAnswer(invitation, input, user.id, status === "DECLINED" ? "invitation.decline" : "invitation.accept");
+  return applyAnswer(invitation, input, user.id, status === "DECLINED" ? "invitation.decline" : "invitation.accept", true);
 }
 
 /** Coordinator changes a helper's shifts or cancels them ("Ret vagter" / "Meld fra"). */
@@ -101,7 +137,7 @@ export async function setHelperAnswer(invitationId: string, input: unknown): Pro
   const invitation = await db.invitation.findUnique({ where: { id: invitationId }, include: { event: { include: { shifts: true } } } });
   if (!invitation) return { error: "Medhjælperen er ikke længere på arrangementet." };
   const status = responseSchema.safeParse(input).data?.status;
-  return applyAnswer(invitation, input, actor.id, status === "DECLINED" ? "invitation.coordinator_decline" : "invitation.coordinator_update");
+  return applyAnswer(invitation, input, actor.id, status === "DECLINED" ? "invitation.coordinator_decline" : "invitation.coordinator_update", false);
 }
 
 export async function addNote(eventId: string, body: string): Promise<ActionResult> {

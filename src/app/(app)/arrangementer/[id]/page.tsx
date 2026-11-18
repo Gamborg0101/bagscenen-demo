@@ -11,7 +11,7 @@ import { canViewEvent, eventInvitations, eventNotes } from "@/lib/events/access"
 import { describeAvailability } from "@/lib/events/format";
 import { getEventWithRelations } from "@/lib/events/queries";
 import { isEventLocked } from "@/lib/events/response";
-import { displayName, eventCoverage, initialAnswer, notesView, shiftOptions, staffingFrom, timelineHelpers } from "@/lib/events/view";
+import { displayName, eventCoverage, heldInvitations, initialAnswer, notesView, shiftOptions, staffingFrom, timelineHelpers } from "@/lib/events/view";
 import { hasRole, requireUser } from "@/lib/session";
 import { ResponseForm } from "./response-form";
 
@@ -29,11 +29,13 @@ export default async function HelperEventPage({ params }: { params: Promise<{ id
   // Leads who aren't on the event themselves use the admin view.
   if (!row && hasRole(user.role, "LEAD")) redirect(`/admin/arrangementer/${id}`);
   // Helpers who haven't answered yet see the event as open.
-  const mine = row ?? { status: "PENDING" as const, availabilities: [] };
+  const mine = row ?? { status: "PENDING" as const, availabilities: [], partialApproval: null, partialReason: null };
 
   const eventDay = toDateInput(event.startsAt);
   const canEditPlanList = mine.status === "ACCEPTED" && !isEventLocked(event);
   const coverage = eventCoverage(event.shifts, invitations);
+  // What's free to take: places held for someone's partial answer count as taken.
+  const takeable = eventCoverage(event.shifts, heldInvitations(event.shifts, invitations));
   const coHelpers = invitations.filter((i) => i.status === "ACCEPTED" && i.userId !== user.id);
   const multiDay = new Set([eventDay, ...event.shifts.map((s) => toDateInput(s.startsAt))]).size > 1;
 
@@ -59,8 +61,10 @@ export default async function HelperEventPage({ params }: { params: Promise<{ id
             locked={isEventLocked(event)}
             cancelled={event.status === "CANCELLED"}
             status={mine.status}
+            partialApproval={mine.partialApproval}
+            partialReason={mine.partialReason}
             summary={describeAvailability(mine.availabilities, event.shifts, eventDay)}
-            shifts={shiftOptions(event.shifts, eventDay)}
+            shifts={shiftOptions(event.shifts, eventDay, takeable)}
             initial={initialAnswer(mine.availabilities)}
           />
         }

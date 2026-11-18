@@ -138,8 +138,12 @@ test("helper accepts with split time windows and admin sees the gap", async ({ b
   await page.locator("input[aria-label=Til]").nth(0).fill("16:00");
   await page.locator("input[aria-label=Fra]").nth(1).fill("17:00");
   await page.locator("input[aria-label=Til]").nth(1).fill("18:00");
+  // Own time windows are an application: a reason is required.
   await page.click("button:text-is('Send svar')");
-  await expect(page.getByText("Du er på")).toBeVisible();
+  await expect(page.getByText("Skriv kort, hvorfor du ikke kan tage hele vagter.")).toBeVisible();
+  await page.fill("#partial-reason", "Forelæsning 16–17");
+  await page.click("button:text-is('Send svar')");
+  await expect(page.getByText("Afventer godkendelse")).toBeVisible();
   await expect(page.getByText("Opsætning 12.30–14.30")).toBeVisible();
   await expect(page.getByRole("figure", { name: /Tidslinje/ })).toBeVisible();
 
@@ -154,6 +158,11 @@ test("helper accepts with split time windows and admin sees the gap", async ({ b
   await admin.page.goto(`/admin/arrangementer/${eventId}`);
   // The gap shows as the red "Mangler" row in the timeline.
   await expect(admin.page.getByRole("figure", { name: /Tidslinje/ }).getByText(/^Mangler \(\d+\)$/)).toBeVisible();
+  await expect(admin.page.getByText("Afventer din godkendelse")).toBeVisible();
+  await expect(admin.page.getByText("Søger om et eget tidsrum · “Forelæsning 16–17”")).toBeVisible();
+  await admin.page.click("button:text-is('Godkend')");
+  await expect(admin.page.getByText("Afventer din godkendelse")).toHaveCount(0);
+  await expect(admin.page.getByText("Er på")).toBeVisible();
   // The coordinator sees who can't come.
   await admin.page.goto(`/admin/arrangementer/${declineEventId}`);
   await expect(admin.page.getByText(`Kan ikke: ${HELPER.firstName} ${HELPER.lastName}`)).toBeVisible();

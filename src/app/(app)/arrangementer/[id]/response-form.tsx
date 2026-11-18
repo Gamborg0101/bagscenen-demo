@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { InvitationStatus } from "@prisma/client";
+import type { InvitationStatus, PartialApproval } from "@prisma/client";
 import { DateInput, TimeInput } from "@/components/date-time-inputs";
+import { Label, TextArea } from "@/components/form-controls";
 import { buttonClass } from "@/components/styles";
 import type { ResponseInput } from "@/lib/events/response";
 import { respondToEvent, setHelperAnswer } from "../actions";
@@ -15,6 +16,7 @@ export type ShiftOption = {
   duration: string | null; // e.g. "2 t" for duration shifts
   suggestedDate: string;
   suggestedStart: string;
+  capacity: "full" | "partly" | null; // enough people on already (see shiftCapacity)
 };
 type Pick = { id: string; date: string | null; start: string | null };
 type WindowRow = ResponseInput["windows"][number];
@@ -25,6 +27,9 @@ type Props = {
   multiDay: boolean;
   shifts: ShiftOption[];
   status: InvitationStatus;
+  partialApproval?: PartialApproval | null;
+  /** The helper's own reason for an own time window (shown back to them only). */
+  partialReason?: string | null;
   summary: string[];
   initial: { picks: Pick[]; windows: WindowRow[] };
   locked: boolean;
@@ -38,6 +43,7 @@ export function ResponseForm(p: Props) {
   const [picks, setPicks] = useState<Pick[]>(p.initial.picks);
   const [windows, setWindows] = useState<WindowRow[]>(p.initial.windows);
   const [showWindows, setShowWindows] = useState(p.initial.windows.length > 0);
+  const [reason, setReason] = useState("");
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
 
@@ -48,6 +54,7 @@ export function ResponseForm(p: Props) {
         status,
         shifts: status === "ACCEPTED" ? picks : [],
         windows: status === "ACCEPTED" ? windows.filter((w) => w.start) : [],
+        reason: status === "ACCEPTED" && !p.admin ? reason : undefined,
       };
       const res = p.admin ? await setHelperAnswer(p.admin.invitationId, answer) : await respondToEvent(p.eventId, answer);
       if (res.error) setError(res.error);
@@ -66,7 +73,7 @@ export function ResponseForm(p: Props) {
   const box = "rounded-lg border border-line p-4";
 
   if (p.locked || (p.cancelled && p.status !== "ACCEPTED")) {
-    return <StatusLine status={p.status} summary={p.summary} />;
+    return <StatusLine status={p.status} partialApproval={p.partialApproval} partialReason={p.partialReason} summary={p.summary} />;
   }
 
   // ---------- Choosing shifts ----------
@@ -82,11 +89,16 @@ export function ResponseForm(p: Props) {
           <ul className="space-y-1">
             {p.shifts.map((s) => {
               const pick = picks.find((x) => x.id === s.id);
+              // Someone already on a full shift keeps it; the server has the final say either way.
+              const closed = !!s.capacity && !p.initial.picks.some((x) => x.id === s.id);
               return (
-                <li key={s.id} className="rounded-md px-1 py-1.5 hover:bg-subtle">
-                  <label className="flex cursor-pointer items-center gap-3">
-                    <input type="checkbox" className="size-4 accent-current" checked={!!pick} onChange={(e) => togglePick(s, e.target.checked)} />
-                    <span className="flex-1">{s.name}</span>
+                <li key={s.id} className={`rounded-md px-1 py-1.5 ${closed ? "text-muted" : "hover:bg-subtle"}`}>
+                  <label className={`flex items-center gap-3 ${closed ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                    <input type="checkbox" className="size-4 accent-current" checked={!!pick} disabled={closed} onChange={(e) => togglePick(s, e.target.checked)} />
+                    <span className="flex-1">
+                      {s.name}
+                      {closed && <span className="ml-2 text-xs">{s.capacity === "full" ? "Fuld" : "Fuld i dele af tiden"}</span>}
+                    </span>
                     <span className="text-right text-muted tabular-nums">{s.time}</span>
                   </label>
                   {pick && s.duration && (
@@ -117,7 +129,11 @@ export function ResponseForm(p: Props) {
 
         {showWindows || p.shifts.length === 0 ? (
           <div className="space-y-2 border-l border-line pl-3">
-            <p className="text-xs text-muted">Kan du kun en del af tiden? Skriv, hvornår du kan.</p>
+            <p className="text-xs text-muted">
+              {p.admin || p.shifts.length === 0
+                ? "Kan du kun en del af tiden? Skriv, hvornår du kan."
+                : "Kan du kun en del af tiden? Søg om et eget tidsrum — koordinatoren skal godkende det."}
+            </p>
             {windows.map((w, i) => (
               <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
                 {p.multiDay && (
@@ -152,6 +168,15 @@ export function ResponseForm(p: Props) {
             <button type="button" className="text-xs underline underline-offset-2" onClick={() => setWindows([...windows, { date: p.eventDay, start: "", end: null }])}>
               + Eget tidsrum
             </button>
+            {!p.admin && p.shifts.length > 0 && windows.some((w) => w.start) && (
+              <div>
+                <Label htmlFor="partial-reason">Hvorfor kan du ikke tage hele vagter?</Label>
+                <TextArea id="partial-reason" maxLength={300} value={reason} onChange={setReason} />
+                <p className="mt-1 text-xs text-muted">
+                  Kort og praktisk, fx “forelæsning til 12”. Skriv ikke om helbred eller andet følsomt. Kun koordinatorer kan se det.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <button type="button" className="text-xs text-muted underline underline-offset-2" onClick={() => setShowWindows(true)}>
@@ -193,7 +218,7 @@ export function ResponseForm(p: Props) {
   // ---------- Helper: answer once; after "yes" only the coordinator can change it ----------
   return (
     <div className={`${box} space-y-3`}>
-      {p.status === "PENDING" ? <p className="font-medium">Kan du hjælpe til dette arrangement?</p> : <StatusLine status={p.status} summary={p.summary} />}
+      {p.status === "PENDING" ? <p className="font-medium">Kan du hjælpe til dette arrangement?</p> : <StatusLine status={p.status} partialApproval={p.partialApproval} partialReason={p.partialReason} summary={p.summary} />}
       {error && <p className="text-xs text-danger">{error}</p>}
       {p.status === "ACCEPTED" ? (
         <p className="text-xs text-muted">Kan du ikke alligevel, eller skal noget ændres? Kontakt koordinatoren.</p>
@@ -213,11 +238,28 @@ export function ResponseForm(p: Props) {
   );
 }
 
-function StatusLine({ status, summary }: { status: InvitationStatus; summary: string[] }) {
+function StatusLine({
+  status,
+  partialApproval,
+  partialReason,
+  summary,
+}: {
+  status: InvitationStatus;
+  partialApproval?: PartialApproval | null;
+  partialReason?: string | null;
+  summary: string[];
+}) {
   if (status === "ACCEPTED") {
+    const waiting = partialApproval === "PENDING";
     return (
       <div>
-        <p className="font-medium text-ok">Du er på</p>
+        <p className={`font-medium ${waiting ? "text-warn" : "text-ok"}`}>{waiting ? "Afventer godkendelse" : "Du er på"}</p>
+        {waiting && (
+          <p className="text-xs text-muted">
+            Du har søgt om et eget tidsrum, så koordinatoren skal godkende det. Indtil da holder vi resten af pladsen til dig.
+            {partialReason && <span className="block">Din begrundelse: {partialReason}</span>}
+          </p>
+        )}
         <ul className="text-sm tabular-nums">
           {summary.map((s) => (
             <li key={s}>{s}</li>
@@ -225,6 +267,9 @@ function StatusLine({ status, summary }: { status: InvitationStatus; summary: st
         </ul>
       </div>
     );
+  }
+  if (status === "DECLINED" && partialApproval === "REJECTED") {
+    return <p className="text-muted">Koordinatoren har ikke godkendt dit eget tidsrum. Du kan tage vagter igen.</p>;
   }
   if (status === "DECLINED") return <p className="text-muted">Du har sagt, at du ikke kan deltage. Koordinatoren kan se det.</p>;
   return <p className="text-muted">Du har ikke svaret.</p>;

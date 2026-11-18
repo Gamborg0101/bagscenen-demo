@@ -17,8 +17,10 @@ import { displayName, eventCoverage, initialAnswer, notesView, shiftOptions, sta
 import { isEventLocked } from "@/lib/events/response";
 import { ResponseForm } from "@/app/(app)/arrangementer/[id]/response-form";
 import { requireUser } from "@/lib/session";
-import { deleteDraft, removeInvitation } from "../actions";
+import { approvePartial, rejectPartial, removeInvitation } from "../actions";
 import { AddHelper } from "./add-helper";
+import { DeleteEvent } from "./delete-event";
+import { GapList } from "./gap-list";
 
 const STATUS: Record<InvitationStatus, { label: string; className: string }> = {
   ACCEPTED: { label: "Er på", className: "text-ok" },
@@ -47,13 +49,15 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
 
   const eventDay = toDateInput(event.startsAt);
   const coverage = eventCoverage(event.shifts, invitations);
-  const options = shiftOptions(event.shifts, eventDay);
+  const options = shiftOptions(event.shifts, eventDay, coverage);
   const multiDay = new Set([eventDay, ...event.shifts.map((s) => toDateInput(s.startsAt))]).size > 1;
   const answeredIds = new Set(invitations.map((i) => i.userId));
   const onIds = new Set(invitations.filter((i) => i.status !== "DECLINED").map((i) => i.userId));
   const candidates = activeUsers.filter((u) => !onIds.has(u.id)).map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` }));
   // So the coordinator knows when to step in: who said no, and which helpers haven't answered at all.
-  const declined = invitations.filter((i) => i.status === "DECLINED").map((i) => displayName(i.user));
+  const declined = invitations
+    .filter((i) => i.status === "DECLINED")
+    .map((i) => `${displayName(i.user)}${i.partialApproval === "REJECTED" ? " (ikke godkendt)" : ""}`);
   const notAnswered = activeUsers.filter((u) => u.role === "HELPER" && !answeredIds.has(u.id)).map((u) => `${u.firstName} ${u.lastName}`);
   const onEvent = invitations.filter((i) => i.status !== "DECLINED");
 
@@ -77,6 +81,7 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
               {event.shifts.length > 0 && (
                 <CoverageTimeline shifts={event.shifts} coverage={coverage} helpers={timelineHelpers(invitations, event.shifts)} />
               )}
+              {event.status === "PUBLISHED" && !isEventLocked(event) && <GapList shifts={event.shifts} coverage={coverage} />}
 
               {onEvent.length > 0 && (
                 <ul className="divide-y divide-line border-y border-line">
@@ -84,12 +89,19 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
                     <li key={i.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">
-                          {displayName(i.user)} <span className={`ml-1 text-xs font-normal ${STATUS[i.status].className}`}>{STATUS[i.status].label}</span>
+                          {displayName(i.user)}{" "}
+                          {i.partialApproval === "PENDING" ? (
+                            <span className="ml-1 text-xs font-normal text-warn">Afventer din godkendelse</span>
+                          ) : (
+                            <span className={`ml-1 text-xs font-normal ${STATUS[i.status].className}`}>{STATUS[i.status].label}</span>
+                          )}
                         </p>
                         {i.availabilities.length > 0 && (
                           <p className="text-xs tabular-nums">{describeAvailability(i.availabilities, event.shifts, eventDay).join(", ")}</p>
                         )}
+                        {i.partialReason && i.partialApproval !== "PENDING" && <p className="text-xs text-muted">Begrundelse: {i.partialReason}</p>}
                       </div>
+                      {i.partialApproval === "PENDING" && <PartialApproval invitationId={i.id} reason={i.partialReason} />}
                       <div className="flex items-center gap-3 text-xs">
                         {!i.user.anonymizedAt && (
                           <a href={`tel:${i.user.phone}`} className="text-muted hover:text-fg tabular-nums">
@@ -151,12 +163,29 @@ export default async function AdminEventPage({ params }: { params: Promise<{ id:
         <NotesLog eventId={event.id} notes={notesView(notes, user)} canWrite />
       </EventSheet>
 
-      {event.status === "DRAFT" && (
-        <form action={deleteDraft} className="border-t border-line pt-6">
-          <input type="hidden" name="eventId" value={event.id} />
-          <button className={buttonClass("danger")}>Slet kladde</button>
+      <DeleteEvent eventId={event.id} title={event.title} isDraft={event.status === "DRAFT"} helperCount={invitations.length} />
+    </div>
+  );
+}
+
+/** A helper applied for an own time window: the rest of the place is held until the coordinator answers. */
+function PartialApproval({ invitationId, reason }: { invitationId: string; reason: string | null }) {
+  return (
+    <div className="w-full space-y-2 rounded-md border border-line p-3 text-xs">
+      <p>
+        Søger om et eget tidsrum{reason && <> · “{reason}”</>}
+        <span className="block text-muted">Resten af pladsen er holdt, så andre ikke kan tage den, indtil du svarer.</span>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <form action={approvePartial}>
+          <input type="hidden" name="invitationId" value={invitationId} />
+          <button className={buttonClass("primary", "sm")}>Godkend</button>
         </form>
-      )}
+        <form action={rejectPartial}>
+          <input type="hidden" name="invitationId" value={invitationId} />
+          <button className={buttonClass("danger", "sm")}>Afvis og tag af</button>
+        </form>
+      </div>
     </div>
   );
 }

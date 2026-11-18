@@ -6,7 +6,7 @@ import { anonymizeUser } from "@/lib/users";
 export const RETENTION = {
   pendingSignupDays: 30, // signups never approved
   disabledUserDays: 365, // deactivated accounts are anonymised after this
-  eventPersonalDataDays: 365, // organiser contacts, notes, helper comments and techriders after the event
+  eventPersonalDataDays: 365, // organiser contacts, notes, reasons for own time windows and techriders after the event
   openRequestGraceDays: 7, // unused booking links after they expire
   requestDays: 180, // submitted booking forms that were never turned into an event
   auditLogDays: 365,
@@ -34,6 +34,7 @@ export async function runRetention() {
   const contacts = await db.eventContact.deleteMany({ where: { event: oldEvents } });
   const notes = await db.eventNote.deleteMany({ where: { event: oldEvents } });
   const techRiders = await db.techRider.deleteMany({ where: { plan: { event: oldEvents } } });
+  const reasons = await db.invitation.updateMany({ where: { event: oldEvents, partialReason: { not: null } }, data: { partialReason: null } });
 
   const requests = await db.eventRequest.deleteMany({
     where: {
@@ -56,6 +57,7 @@ export async function runRetention() {
     eventContacts: contacts.count,
     eventNotes: notes.count,
     techRiders: techRiders.count,
+    partialReasons: reasons.count,
     requests: requests.count,
     auditLog: audit.count,
     resetTokens: resetTokens.count,

@@ -34,6 +34,8 @@ const ACTION_LABEL: Record<string, string> = {
   "invitation.decline": "Meldte fra",
   "invitation.coordinator_update": "Rettede en medhjælpers vagter",
   "invitation.coordinator_decline": "Meldte en medhjælper fra",
+  "invitation.partial_approve": "Godkendte et eget tidsrum",
+  "invitation.partial_reject": "Afviste et eget tidsrum",
   "request.create": "Oprettede bestillingslink",
   "request.submit": "Arrangør sendte bestilling",
   "request.convert": "Oprettede arrangement fra bestilling",

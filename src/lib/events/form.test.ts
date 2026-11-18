@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Event } from "@prisma/client";
 import { formatRange, toDateInput, toTimeInput } from "@/lib/datetime";
-import { VENUE_CAPACITY, emptyEventForm, eventFormSchema, eventToForm, formToDb, formatDuration, normalizeRoom, standardShifts, syncShiftsToEvent } from "./form";
+import { VENUE_CAPACITY, emptyEventForm, eventFormSchema, eventToForm, formToDb, formatDuration, movedPicks, normalizeRoom, standardShifts, syncShiftsToEvent } from "./form";
 import { requirementSections } from "./requirements";
 
 // Raw form input (before validation) for schema tests.
@@ -106,6 +106,17 @@ describe("validation", () => {
     expect(r.success).toBe(false);
     expect(r.error?.issues.map((i) => i.path.join("."))).toEqual(expect.arrayContaining(["title", "contacts.0.email"]));
   });
+
+  it("accepts contact emails outside the organisation's domains", () => {
+    const r = eventFormSchema.safeParse({
+      ...emptyEventForm(),
+      title: "Oplæg",
+      date: "2026-09-24",
+      startTime: "15:00",
+      contacts: [{ name: "Kontaktperson", role: "", email: "person@example.org", phone: "" }],
+    });
+    expect(r.success).toBe(true);
+  });
 });
 
 describe("eventToForm", () => {
@@ -176,5 +187,28 @@ describe("rooms and foyer", () => {
 describe("formatDuration", () => {
   it("writes Danish durations", () => {
     expect([30, 60, 90, 120, 135].map(formatDuration)).toEqual(["½ t", "1 t", "1½ t", "2 t", "2 t 15 min"]);
+  });
+});
+
+describe("movedPicks", () => {
+  const d = (s: string) => new Date(s);
+  const before = [
+    { id: "ned", startsAt: d("2026-11-15T21:00:00Z") },
+    { id: "fix", startsAt: d("2026-11-15T15:00:00Z") },
+  ];
+  const picks = [
+    { id: "a", shiftId: "ned", startsAt: d("2026-11-15T21:30:00Z"), endsAt: d("2026-11-15T23:30:00Z") },
+    { id: "b", shiftId: null, startsAt: d("2026-11-15T15:00:00Z"), endsAt: null },
+  ];
+
+  it("moves picks by the same amount as their shift", () => {
+    const after = [{ id: "ned", startsAt: d("2026-11-20T21:00:00Z") }, { id: "fix", startsAt: d("2026-11-15T15:00:00Z") }];
+    expect(movedPicks(before, after, picks)).toEqual([
+      { id: "a", shiftId: "ned", startsAt: d("2026-11-20T21:30:00Z"), endsAt: d("2026-11-20T23:30:00Z") },
+    ]);
+  });
+
+  it("leaves own time windows and unmoved shifts alone", () => {
+    expect(movedPicks(before, before, picks)).toEqual([]);
   });
 });

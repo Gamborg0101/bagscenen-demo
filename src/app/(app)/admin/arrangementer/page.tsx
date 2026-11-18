@@ -7,6 +7,7 @@ import { EVENT_STATUS_LABEL, EVENT_TYPE_LABEL } from "@/lib/events/labels";
 import { requireUser } from "@/lib/session";
 import { staffingSummary } from "@/lib/events/view";
 import { formatEventRef, parseEventRef } from "@/lib/events/ref";
+import { eventTimeWhere } from "@/lib/events/response";
 
 export const metadata = { title: "Arrangementer · Bagscenen" };
 
@@ -20,10 +21,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const eventType = type && type in EVENT_TYPE_LABEL ? (type as EventType) : undefined;
   const ref = parseEventRef(query);
 
-  // An event counts as upcoming until the day after it starts.
-  const cutoff = new Date(Date.now() - 24 * 3600_000);
   const where: Prisma.EventWhereInput = {
-    startsAt: archive ? { lt: cutoff } : { gte: cutoff },
+    AND: [eventTimeWhere(archive ? "past" : "upcoming")],
     ...(eventType && { eventType }),
     ...(query && {
       OR: [
@@ -50,8 +49,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
       status: true,
       eventType: true,
       helpersWanted: true,
-      shifts: true,
-      invitations: { select: { status: true, userId: true, availabilities: true } },
+      shifts: { include: { gapApprovals: true } },
+      invitations: { select: { status: true, userId: true, availabilities: true, partialApproval: true } },
     },
   });
 
@@ -135,6 +134,7 @@ function Staffing({ summary }: { summary: ReturnType<typeof staffingSummary> }) 
       <span className="block text-muted tabular-nums">
         {summary.accepted} på{summary.declined > 0 && ` · ${summary.declined} kan ikke`}
       </span>
+      {summary.awaiting > 0 && <span className="block text-warn tabular-nums">{summary.awaiting} afventer godkendelse</span>}
     </span>
   );
 }

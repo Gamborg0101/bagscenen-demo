@@ -15,6 +15,8 @@ export async function GET() {
       where: { userId: user.id },
       select: {
         status: true,
+        partialApproval: true,
+        partialReason: true,
         respondedAt: true,
         createdAt: true,
         event: { select: { title: true, startsAt: true, endsAt: true, location: true } },

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { describeAvailability } from "@/lib/events/format";
 import { staffingSummary } from "@/lib/events/view";
 import { formatEventRef } from "@/lib/events/ref";
-import { isEventLocked } from "@/lib/events/response";
+import { eventTimeWhere, isEventOver } from "@/lib/events/response";
 import { hasRole, requireUser } from "@/lib/session";
 
 export default async function DashboardPage() {
@@ -17,8 +17,8 @@ export default async function DashboardPage() {
     orderBy: { event: { startsAt: "asc" } },
   });
 
-  const upcoming = invitations.filter((i) => !isEventLocked(i.event));
-  const past = invitations.filter((i) => isEventLocked(i.event)).reverse().slice(0, 20);
+  const upcoming = invitations.filter((i) => !isEventOver(i.event));
+  const past = invitations.filter((i) => isEventOver(i.event)).reverse().slice(0, 20);
   const accepted = upcoming.filter((i) => i.status === "ACCEPTED");
   const declined = upcoming.filter((i) => i.status === "DECLINED");
 
@@ -49,16 +49,15 @@ export default async function DashboardPage() {
 
 /** Upcoming events the helper hasn't answered yet: they can take shifts or say they can't come. */
 async function OpenEvents({ userId }: { userId: string }) {
-  const events = await db.event.findMany({
+  const open = await db.event.findMany({
     where: {
       status: "PUBLISHED",
-      startsAt: { gte: new Date(Date.now() - 48 * 3600_000) },
+      ...eventTimeWhere("upcoming"),
       invitations: { none: { userId, status: { in: ["ACCEPTED", "DECLINED"] } } },
     },
     orderBy: { startsAt: "asc" },
-    include: { shifts: true, invitations: { select: { status: true, userId: true, availabilities: true } } },
+    include: { shifts: { include: { gapApprovals: true } }, invitations: { select: { status: true, userId: true, availabilities: true } } },
   });
-  const open = events.filter((e) => !isEventLocked(e));
 
   return (
     <section>
@@ -98,12 +97,11 @@ async function OpenEvents({ userId }: { userId: string }) {
 
 /** The next events and their staffing, for coordinators. */
 async function CoordinatorOverview() {
-  const since = new Date(Date.now() - 24 * 3600_000);
   const events = await db.event.findMany({
-    where: { startsAt: { gte: since }, status: { not: "CANCELLED" } },
+    where: { ...eventTimeWhere("upcoming"), status: { not: "CANCELLED" } },
     orderBy: { startsAt: "asc" },
     take: 6,
-    include: { shifts: true, invitations: { select: { status: true, userId: true, availabilities: true } } },
+    include: { shifts: { include: { gapApprovals: true } }, invitations: { select: { status: true, userId: true, availabilities: true, partialApproval: true } } },
   });
   const rows = events.map((e) => ({ e, s: e.status === "PUBLISHED" ? staffingSummary(e.shifts, e.invitations) : null }));
 
@@ -134,6 +132,7 @@ async function CoordinatorOverview() {
                       <>
                         <span className={s.covered ? "text-ok" : "text-warn"}>{s.covered ? "Dækket" : "Mangler medhjælp"}</span>
                         <span className="block text-muted tabular-nums">{s.accepted} på</span>
+                        {s.awaiting > 0 && <span className="block text-warn tabular-nums">{s.awaiting} afventer godkendelse</span>}
                       </>
                     ) : (
                       <span className="text-muted">Ingen vagter</span>

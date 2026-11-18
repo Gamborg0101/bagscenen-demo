@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axisFor, barFor, ticks } from "./timeline";
+import { axisFor, barFor, outside, tickLabel, ticks } from "./timeline";
 
 const t = (hhmm: string) => new Date(`2026-10-22T${hhmm}:00Z`);
 
@@ -31,5 +31,34 @@ describe("timeline geometry", () => {
 
   it("returns null without ranges", () => {
     expect(axisFor([])).toBeNull();
+  });
+});
+
+describe("timeline with far-off windows and long spans", () => {
+  const d = (iso: string) => new Date(iso);
+  const shifts = [{ start: d("2026-11-20T15:00:00Z"), end: d("2026-11-20T23:00:00Z") }];
+
+  it("ignores helper windows days away from the shifts, but widens for nearby ones", () => {
+    const stray = { start: d("2026-11-15T21:00:00Z"), end: d("2026-11-15T23:00:00Z") };
+    const early = { start: d("2026-11-20T12:00:00Z"), end: d("2026-11-20T15:00:00Z") };
+    const axis = axisFor(shifts, [stray, early])!;
+    expect([axis.start.toISOString(), axis.end.toISOString()]).toEqual(["2026-11-20T12:00:00.000Z", "2026-11-20T23:00:00.000Z"]);
+    expect(outside(axis, stray)).toBe("before");
+    expect(outside(axis, early)).toBeNull();
+  });
+
+  it("draws an open-ended window that started before the axis, not an edge marker", () => {
+    const axis = axisFor(shifts)!;
+    const running = { start: d("2026-11-19T21:00:00Z"), end: null };
+    expect(outside(axis, running)).toBeNull();
+    expect(barFor(axis, running)).toEqual({ left: 0, width: 100, openEnd: true });
+    expect(outside(axis, { start: d("2026-11-21T00:00:00Z"), end: null })).toBe("after");
+  });
+
+  it("keeps a multi-day axis to a few ticks on local midnights, labelled by date", () => {
+    const axis = { start: d("2026-11-15T21:00:00Z"), end: d("2026-11-20T23:00:00Z") };
+    const ts = ticks(axis);
+    expect(ts.length).toBeLessThanOrEqual(8);
+    expect(ts.map((t) => tickLabel(axis, t))).toEqual(["16/11", "17/11", "18/11", "19/11", "20/11", "21/11"]);
   });
 });

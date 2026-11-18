@@ -1,13 +1,14 @@
 import type { Shift } from "@prisma/client";
 import type { ShiftCoverage, Window } from "@/lib/coverage";
-import { formatRange, formatTime } from "@/lib/datetime";
-import { axisFor, barFor, pct, ticks, type Axis } from "@/lib/timeline";
+import { formatRange, formatShortDay } from "@/lib/datetime";
+import { axisFor, barFor, outside, pct, tickLabel, ticks, type Axis } from "@/lib/timeline";
 
 type HelperRow = { id: string; name: string; windows: Window[]; isYou?: boolean };
 
 /**
  * One timeline for the whole event: the shifts, one row per helper who said yes,
- * and a red "Mangler (n)" row where fewer people are present than needed.
+ * and a red "Mangler (n)" row where fewer people are present than needed
+ * (gaps a coordinator has approved with "Det er fint" are drawn grey).
  */
 export function CoverageTimeline({
   shifts,
@@ -20,26 +21,30 @@ export function CoverageTimeline({
 }) {
   const shiftRanges = shifts.map((s) => coverage.get(s.id)!.range);
   const helperRanges = helpers.flatMap((h) => h.windows.filter((w) => w.end).map((w) => ({ start: w.start, end: w.end! })));
-  const axis = axisFor([...shiftRanges, ...helperRanges]);
+  const axis = axisFor(shiftRanges, helperRanges);
   // Only worth showing once someone has taken a shift.
   if (!axis || helpers.length === 0) return null;
 
   const gaps = shifts.flatMap((s) => coverage.get(s.id)!.gaps.map((g) => ({ ...g, need: s.helpersNeeded, key: `${s.id}-${+g.start}` })));
   const missing = Math.max(0, ...gaps.map((g) => g.need - g.have));
+  const approved = shifts.flatMap((s) => coverage.get(s.id)!.approvedGaps.map((g) => ({ ...g, key: `${s.id}-${+g.start}` })));
 
   return (
     <figure className="space-y-1.5" aria-label="Tidslinje over hvem der er på">
       <Row label="">
         <div className="relative h-4 text-[10px] text-muted tabular-nums">
-          {ticks(axis).map((t, i, all) => (
-            <span
-              key={+t}
-              className="absolute top-0"
-              style={{ left: `${pct(axis, t)}%`, transform: i === 0 ? "none" : i === all.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
-            >
-              {formatTime(t).replace(".00", "")}
-            </span>
-          ))}
+          {ticks(axis).map((t) => {
+            const at = pct(axis, t);
+            return (
+              <span
+                key={+t}
+                className="absolute top-0 whitespace-nowrap"
+                style={{ left: `${at}%`, transform: at < 4 ? "none" : at > 96 ? "translateX(-100%)" : "translateX(-50%)" }}
+              >
+                {tickLabel(axis, t)}
+              </span>
+            );
+          })}
         </div>
       </Row>
 
@@ -48,6 +53,19 @@ export function CoverageTimeline({
           <Track axis={axis}>
             {h.windows.map((w, i) => {
               const bar = barFor(axis, w);
+              const side = outside(axis, w);
+              if (side) {
+                // Far from the shifts (e.g. a pick left on an old date): a marker at the edge, not a stretched axis.
+                return (
+                  <span
+                    key={i}
+                    title={`${h.name}: ${formatShortDay(w.start)} ${formatRange(w.start, w.end, "færdig")} (uden for tidslinjen)`}
+                    className={`absolute inset-y-0 flex items-center px-0.5 text-xs leading-none text-muted ${side === "before" ? "left-0" : "right-0"}`}
+                  >
+                    {side === "before" ? "‹" : "›"}
+                  </span>
+                );
+              }
               if (!bar) return null;
               return (
                 <div
@@ -66,9 +84,20 @@ export function CoverageTimeline({
         </Row>
       ))}
 
-      {gaps.length > 0 && (
-        <Row label={`Mangler (${missing})`} danger>
+      {gaps.length + approved.length > 0 && (
+        <Row label={gaps.length > 0 ? `Mangler (${missing})` : "Det er fint"} danger={gaps.length > 0}>
           <Track axis={axis}>
+            {approved.map((g) => {
+              const bar = barFor(axis, g)!;
+              return (
+                <div
+                  key={g.key}
+                  title={`Det er fint med ${g.have} ${formatRange(g.start, g.end)}`}
+                  className="absolute top-1.5 h-3 rounded-sm bg-muted/30"
+                  style={{ left: `${bar.left}%`, width: `${bar.width}%` }}
+                />
+              );
+            })}
             {gaps.map((g) => {
               const bar = barFor(axis, g)!;
               return (

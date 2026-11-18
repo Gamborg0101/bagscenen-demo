@@ -373,3 +373,27 @@ export function formatDuration(minutes: number): string {
   if (m === 0) return `${h} t`;
   return h === 0 ? `${m} min` : `${h} t ${m} min`;
 }
+
+/**
+ * Helpers' picks on duration shifts keep the start they chose, so when the coordinator moves a shift
+ * the picks must move with it (same offset from the shift's start) — otherwise they stay on the old date.
+ * Returns the availabilities whose times change. Picks on deleted shifts are left alone (the FK sets
+ * `shiftId` to null, so they become own time windows).
+ */
+export function movedPicks<A extends { id: string; shiftId: string | null; startsAt: Date; endsAt: Date | null }>(
+  before: Pick<Shift, "id" | "startsAt">[],
+  after: { id?: string | null; startsAt: Date }[],
+  availabilities: A[],
+): A[] {
+  const delta = new Map<string, number>();
+  for (const old of before) {
+    const s = after.find((x) => x.id === old.id);
+    const ms = s ? +s.startsAt - +old.startsAt : 0;
+    if (ms !== 0) delta.set(old.id, ms);
+  }
+  return availabilities.flatMap((a) => {
+    const ms = a.shiftId ? delta.get(a.shiftId) : undefined;
+    if (!ms) return [];
+    return [{ ...a, startsAt: new Date(+a.startsAt + ms), endsAt: a.endsAt && new Date(+a.endsAt + ms) }];
+  });
+}

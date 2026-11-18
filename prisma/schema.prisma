@@ -195,8 +195,25 @@ model Shift {
 
   event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   availabilities Availability[]
+  gapApprovals   GapApproval[]
 
   @@index([eventId])
+}
+
+// A coordinator's "Det er fint" on a gap: in this window, `enough` people are enough.
+// If fewer than that are there later (someone leaves), the gap shows again.
+// Who approved it is in the audit log, so no personal data here.
+model GapApproval {
+  id        String   @id @default(cuid())
+  shiftId   String
+  startsAt  DateTime
+  endsAt    DateTime
+  enough    Int
+  createdAt DateTime @default(now())
+
+  shift Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@index([shiftId])
 }
 
 // ---------- Invitations & availability ----------
@@ -207,14 +224,25 @@ enum InvitationStatus {
   DECLINED
 }
 
+// Whole shifts are free to take; an own time window is an application the coordinator must OK.
+// Until then the rest of the place in the shifts it touches is held.
+enum PartialApproval {
+  PENDING // waiting for the coordinator; nobody else can take the rest of the place
+  REJECTED // the coordinator said no: the helper was taken off (status DECLINED)
+}
+
 model Invitation {
-  id          String           @id @default(cuid())
-  eventId     String
-  userId      String
-  status      InvitationStatus @default(PENDING)
-  respondedAt DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id              String           @id @default(cuid())
+  eventId         String
+  userId          String
+  status          InvitationStatus @default(PENDING)
+  partialApproval PartialApproval? // null = nothing to approve
+  // The helper's reason for an own time window (required). Personal data: coordinators only;
+  // cleared when the answer no longer has own windows, and by retention (RETENTION.eventPersonalDataDays).
+  partialReason   String?
+  respondedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)

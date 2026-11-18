@@ -6,7 +6,7 @@ export function getEventWithRelations(id: string) {
     where: { id },
     include: {
       contacts: { orderBy: { sortKey: "asc" } },
-      shifts: { orderBy: { startsAt: "asc" } },
+      shifts: { orderBy: { startsAt: "asc" }, include: { gapApprovals: true } },
     },
   });
 }

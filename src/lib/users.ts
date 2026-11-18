@@ -24,6 +24,7 @@ export async function anonymizeUser(userId: string) {
       },
     }),
     db.passwordResetToken.deleteMany({ where: { userId } }),
+    db.invitation.updateMany({ where: { userId }, data: { partialReason: null } }),
     db.invitation.deleteMany({
       where: {
         userId,

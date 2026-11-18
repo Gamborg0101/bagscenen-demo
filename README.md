@@ -22,8 +22,9 @@ Bagscenen replaces the chat threads:
 
 - The **coordinator** turns the meeting notes into an event — a form built around the venue's own checklist (stage,
   sound, light, chairs) that only shows the fields that matter — and publishes it.
-- **Helpers** see every upcoming event on their phone and take shifts themselves — whole shifts, or exactly when they
-  can come ("15–16 and after 17") — or tap "can't attend" so the coordinator knows who won't come.
+- **Helpers** see every upcoming event on their phone and take shifts themselves — whole shifts, or their own time
+  window, which needs a reason and the coordinator's approval — or tap "can't attend" so the coordinator knows who
+  won't come. A shift can't be over-booked: once enough people are on, it shows "Fuld".
 - A **timeline** shows who is on when, and a red bar shows where people are still missing.
 - Everyone on the event sees the organiser's contact details, each other's phone numbers, and a shared log of what
   was agreed.
@@ -38,6 +39,9 @@ Bagscenen replaces the chat threads:
 - Every event gets a readable id (`2026-012`). Follow who's on, who can't come and who hasn't answered; put a named
   helper on directly and adjust anyone's shifts. Helpers answer once; changes go through the coordinator.
 - Coverage timeline per event and "missing helpers" across the event list.
+- **Approvals:** a helper's own time window waits for the coordinator, who answers "Godkend" or "Afvis og tag af".
+  A gap the coordinator accepts as good enough can be approved with "Det er fint" and is drawn grey in the timeline.
+- Published events can be deleted by the coordinator.
 - **Booking links:** send an organiser a one-time link to fill in the checklist themselves (Danish/English), then turn
   it into an event with one click.
 - **Channel plans** for sound — per event and per band: mixer-aware input numbering (stagebox vs. local inputs),
@@ -98,7 +102,7 @@ The app holds personal data about students, so it was designed to store as littl
 - **Unit tests** (Vitest) for the domain logic: coverage and gaps, shift times, channel-plan parsing and
   paste-from-Excel, validation, date handling.
 - **End-to-end tests** (Playwright) against a production build: signup → approval → event with standard shifts →
-  a helper takes shifts with split time windows or says they can't attend → the coordinator sees the gap; channel plans
+  a helper takes shifts, applies for their own time window or says they can't attend → the coordinator approves or sees the gap; channel plans
   and QR sharing (including the "plan has changed" check);
   booking links; session invalidation; the retention job. Each run creates its own throwaway database.
 - CI runs lint, type-check, unit tests, `npm audit` and the end-to-end suite on every push.
